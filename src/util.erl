@@ -1,7 +1,7 @@
 -module(util).
 -author(bharendt).
 
--export([refresh/1, refresh_test/1]).
+-export([refresh/1, refresh/2, refresh_test/1]).
 -export([test/1, test_module/1]).
 -export([parse/1, eval/1, is_process_alive/1]).
 
@@ -27,11 +27,18 @@ refresh(Module) when is_atom(Module) ->
   
 refresh_test(Module) ->
   refresh(Module, get_processes(Module), [{d,'TEST',true}, export_all]).
+  
+refresh(Module, CompileOptions) ->
+  refresh(Module, get_processes(Module), CompileOptions).
 
 %% refreshes a single module
 refresh(Module, Processes, ExtraOptions) when is_atom(Module) ->
   io:format("~ncompiling module '~w':~n",[Module]),
-  case compile:file("src/" ++ atom_to_list(Module) ++ ".erl", [verbose,report_errors,report_warnings, {i, "./include"}, {outdir, "./ebin"}] ++ ExtraOptions) of
+  SourceDir = case lists:keysearch(source_dir, 1, ExtraOptions) of 
+    {value, {source_dir, Dir}} -> Dir;
+    _ -> "src/"
+  end,
+  case compile:file(SourceDir ++ atom_to_list(Module) ++ ".erl", [verbose,report_errors,report_warnings, {i, "./include"}, {outdir, "./ebin"}] ++ ExtraOptions) of
     {ok, Module} ->
       [sys:suspend(Pid) || Pid <- Processes],
       code:purge(Module),
@@ -46,9 +53,11 @@ refresh(Module, Processes, ExtraOptions) when is_atom(Module) ->
         ReloadError ->
           io:format("~nFAILED to reload module '~w': ~w",[Module, ReloadError])
       end,
-      [sys:resume(Pid) || Pid <- Processes];
+      [sys:resume(Pid) || Pid <- Processes],
+      ok;
     CompileError ->
-      io:format("~nFAILED to compile module '~w': ~w",[Module, CompileError])
+      io:format("~nFAILED to compile module '~w': ~w",[Module, CompileError]),
+      error
   end.
 
 get_processes(_Module) ->

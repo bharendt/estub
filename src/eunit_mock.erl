@@ -75,7 +75,13 @@
 %% <code>-compile({parse_transform, eunit_mock})</code> so that they can be mocked
 %% and return the result of the mock function instead of the real function.
 parse_transform(Forms, _Options) ->
-    forms(Forms).
+    forms(insert_mocked_atrribute(Forms)).
+
+insert_mocked_atrribute(Forms) ->
+  lists:foldr(
+    fun(Form = {attribute,_LineNumber,module,_ModuleName}, Acc) -> [Form, {attribute,1,mocked,true} | Acc];
+       (Form, Acc) -> [Form | Acc]
+  end, [], Forms).
 
 %% forms(Fs) -> lists:map(fun (F) -> form(F) end, Fs).
 
