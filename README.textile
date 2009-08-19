@@ -2,19 +2,22 @@
 
 It is still under construction, but when finished you should be able to write tests like this:
 
-  -module(my_module).
-  -export([my_fun/0, my_other_fun/1]).
+bc.  -module(my_module).
+ -export([my_fun/0, my_other_fun/1]).
 
-  my_fun() -> my_fun.
-  my_fun(Arg) -> Arg.
+bc.  my_fun() -> my_fun.
+ my_fun(Arg) -> Arg.
 
-  estub_test() ->
-    ?assertMatch(my_fun, my_module:my_fun()),
-    ?stub(_Fun = fun my_module:my_fun/1, _Return = stubbed_value),
+bc.  estub_test() ->
+    ?assertMatch(my_fun, my_module:my_fun()), % real fun returns atom 'my_fun'
+    ?stub(_Fun = fun my_module:my_fun/0, _Return = stubbed_value), % fun my_fun should from now on return 'stubbed_value' 
+    ?assertCalled(_Fun = fun my_module:my_fun/0, _Times = once), % assert that fun is called once
     ?assertMatch(stubbed_value, my_module:my_fun()),
     ?assertMatch(arg, my_module:my_fun(arg)),
-    ?stub(_Fun = fun my_module:my_other_fun/1, _Return = fun(_Arg) -> stubbed_value_1 end),
-    ?assertMatch(stubbed_value_1, my_module:my_other_fun(1)).
+    ?stub(_Fun = fun my_module:my_other_fun/1, _Return = fun(_Arg) -> stubbed_value_1 end), % return not fixed value, but eval fun
+    ?assertCalled(_Fun = fun my_module:my_other_fun/1, _Times = twice),
+    ?assertMatch(stubbed_value_1, my_module:my_other_fun(1)),
+    my_module:my_other_fun(1).
 
 
 
