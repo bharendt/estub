@@ -1,0 +1,20 @@
+*estub* aims to add stubbing and mocking to the "eunit":http://svn.process-one.net/contribs/trunk/eunit/doc/overview-summary.html test framework.
+
+It is still under construction, but when finished you should be able to write tests like this:
+
+  -module(my_module).
+  -export([my_fun/0, my_other_fun/1]).
+
+  my_fun() -> my_fun.
+  my_fun(Arg) -> Arg.
+
+  estub_test() ->
+    ?assertMatch(my_fun, my_module:my_fun()),
+    ?stub(_Fun = fun my_module:my_fun/1, _Return = stubbed_value),
+    ?assertMatch(stubbed_value, my_module:my_fun()),
+    ?assertMatch(arg, my_module:my_fun(arg)),
+    ?stub(_Fun = fun my_module:my_other_fun/1, _Return = fun(_Arg) -> stubbed_value_1 end),
+    ?assertMatch(stubbed_value_1, my_module:my_other_fun(1)).
+
+
+
