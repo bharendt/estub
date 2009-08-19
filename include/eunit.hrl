@@ -320,6 +320,28 @@
 -define(_assertNotException(Class, Term, Expr),
 	?_test(?assertNotException(Class, Term, Expr))).
 
+%% Macros for stubbing and mocking
+-ifdef(NOASSERT).
+-define(stub(Fun, ReturnValue), ok).
+-else.
+-define(stub(Fun, ReturnValue),
+	((fun () ->
+	    case (eunit_mock:stub(Fun, ReturnValue)) of
+		ok -> ok;
+		__V -> .erlang:error({stub_failed,
+				      [{module, ?MODULE},
+				       {line, ?LINE},
+				       {function, (??Fun)},
+				       {return_value, (??ReturnValue)},
+				       {value, __V}]})
+	    end
+	  end)())).
+-endif.
+-define(_stub(Fun, ReturnValue), ?_test(?stub(Fun, ReturnValue))).
+
+
+
+
 %% Macros for running operating system commands. (Note that these
 %% require EUnit to be present at runtime, or at least eunit_lib.)
 

@@ -35,7 +35,7 @@
 %% <b>To:</b><br/>
 %% <pre>
 %%  fun_that_can_be_mocked(__Arg1__ = Arg1, __Arg2__ = [Arg2 | _]) ->
-%%    case emock:do_mock(?MODULE, mocked_fun, 2, [__Arg1__, __Arg2__], self()) of
+%%    case eunit_mock:execute__mock__(?MODULE, mocked_fun, 2, [__Arg1__, __Arg2__], self()) of
 %%      no____mock ->
 %%        io:format("executing unmocked_fun/2~n"),
 %%        if Arg1 > Arg2 -> 'unmocked_fun/2:true';
@@ -43,7 +43,7 @@
 %%      __Mocked___Result__ -> __Mocked___Result__
 %%    end.
 %% </pre>
-%% <code>emock:do_mock/5</code> returns the result of the mock if mocking is used, otherwise
+%% <code>eunit_mock:execute__mock__/5</code> returns the result of the mock if mocking is used, otherwise
 %% it returns the atom <code>no____mock</code> and the original function code is executed.<br/><br/>
 %% When transformed, the functions can be mocked like this:
 %% <pre>
@@ -55,7 +55,7 @@
 %%  % execute unmocked function
 %%  Ruby = coding:get_coolest_language([ruby, erlang, java, cpp]). % = ruby
 %%  % mock function
-%%  emock:mock(_Module = coding, _FunName = get_coolest_language, _Arity = 1, _MockFun = fun(List) -> erlang end), 
+%%  eunit_mock:mock(_Module = coding, _FunName = get_coolest_language, _Arity = 1, _MockFun = fun(List) -> erlang end), 
 %%  % no we get mocked result:
 %%  Erlang = coding:get_coolest_language([ruby, erlang, java, cpp]). % = erlang
 %% </pre><br/>
@@ -63,19 +63,186 @@
 %% traverses legal Erlang code. 
 %% See <a href="http://erlang.org/doc/man/erl_id_trans.html">http://erlang.org/doc/man/erl_id_trans.html</a>.
 -module(eunit_mock).
+-behaviour(gen_server).
 -author(bharendt).
 
 -export([parse_transform/2]).
+-export([execute__mock__/5]).
+-export([init/1, handle_call/3, handle_cast/2, 
+         handle_info/2, terminate/2, code_change/3]).
+-export([stub/2]).
+
+-record(state, {
+    stubs = []
+  }).
+
+-record(stub, {
+    module_name,
+    fun_name,
+    arity,
+    returns
+  }).
 
 -ifdef(TEST).
   -include("test/eunit_mock_test.erl").
 -endif.
 
+
+%%----------------------------------------------------
+%% stub and mocking exports
+%%----------------------------------------------------
+
+stub(Fun, ReturnValue) when is_function(Fun) ->
+  case check_arity(Fun, ReturnValue) of 
+    ok ->
+      case fun_to_stub_record(Fun) of 
+        _Error = {error, Error} -> Error;
+        Stub ->
+          set_stub(Stub#stub { returns = ReturnValue}),
+          ok
+      end;
+    {error, Reason} -> 
+      Reason
+  end.
+
+
+execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
+  io:format("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
+  case get_stub(ModuleName, FunctionName, Arity) of 
+    false ->
+      no____mock;
+    {value, Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun, Arity) ->
+      erlang:apply(ReturnFun, Arguments);
+    {value, Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun) ->
+      .erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
+                                                 atom_to_list(FunctionName) ++ "/" ++ 
+                                                 integer_to_list(Arity))},
+                                      {stub, ReturnFun}]});
+    {value, Stub = #stub {returns = ReturnValue}} ->
+      ReturnValue
+  end.
+
+%%----------------------------------------------------
+%% mock server api
+%%----------------------------------------------------
+
+set_stub(Stub = #stub{}) ->
+  cast_to_mock_server({set_stub, Stub}).
+
+set_stub(ModuleName, FunName, Arity, ReturnValue) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+  cast_to_mock_server({set_stub, #stub{ module_name = ModuleName, fun_name = FunName, arity = Arity, returns = ReturnValue}}).
+
+get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+  call_mock_server({get_stub, ModuleName, FunName, Arity}).
+
+%%----------------------------------------------------
+%% gen_server implementation
+%%----------------------------------------------------
+
+init([]) ->
+  State = #state{},
+  {ok, State}.
+
+
+
+handle_cast({set_stub, NewStub = #stub{}}, State = #state { stubs = Stubs}) ->
+  {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
+  
+handle_cast(Event, State) ->
+  error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
+                            {message, 'received unhandled event in handle_cast.'},
+                            {event, Event}]),
+  {noreply, State}.
+
+
+handle_call({get_stub, ModuleName, FunName, Arity}, _From, State = #state{stubs = Stubs}) ->
+  {reply, find_stub(ModuleName, FunName, Arity, Stubs), State};
+
+handle_call(Event, _From, State) ->
+  error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
+                            {message, 'received unhandled event in handle_call.'},
+                            {event, Event}]),
+  {reply, error, State}.
+
+terminate(Reason, State) ->
+  ok.
+
+code_change(_OldVsn, Data, _Extra) ->
+ io:format("\t   received code change event in tcp server ~n"),
+ {ok, Data}.  
+
+handle_info(Event, Data) ->
+  error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
+                            {message, 'received unhandled event in handle_info.'},
+                            {event, Event}]),
+  {noreply, Data}.
+
+call_mock_server(Event) ->
+  assert_started(),
+  gen_server:call({global, ?MODULE}, Event).
+
+cast_to_mock_server(Event) ->
+  assert_started(),
+  gen_server:cast({global, ?MODULE}, Event).
+  
+assert_started() ->
+  case global:whereis_name(?MODULE) of
+    undefined ->
+      ?assertMatch({ok, _}, gen_server:start({global, ?MODULE}, ?MODULE, [], []));
+    Pid -> ok
+  end.
+
+%%----------------------------------------------------
+%% helpers
+%%----------------------------------------------------
+
+fun_to_stub_record(Fun) when is_function(Fun) ->
+  case erlang:fun_info(Fun, type) of
+    {type, local} -> {error, local_fun};
+    {type, external} ->
+      {module, ModuleName} = erlang:fun_info(Fun, module),
+      {name, FunName} = erlang:fun_info(Fun, name),
+      {arity, Arity} = erlang:fun_info(Fun, arity),
+      #stub { module_name = ModuleName, fun_name = FunName, arity = Arity}
+  end.
+
+find_stub(ModuleName, FunName, Arity, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+  false;
+find_stub(ModuleName, FunName, Arity, Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A} | _]) when ModuleName == M, FunName == F, Arity == A,
+                                                                                                                  is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+  {value, Stub};
+find_stub(ModuleName, FunName, Arity, Stubs = [#stub{ } | Rest]) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+  find_stub(ModuleName, FunName, Arity, Rest).
+  
+set_stub(NewStub = #stub {}, Stubs) when is_list(Stubs) ->
+  set_stub(NewStub, Stubs, []).
+  
+set_stub(NewStub = #stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
+  [NewStub | lists:reverse(CheckStubs)];
+set_stub(NewStub = #stub {module_name = N1, fun_name = F1, arity = A1}, _Stubs = [#stub{module_name = N2, fun_name = F2, arity = A2}|Rest], CheckStubs ) 
+                                        when is_list(CheckStubs), N1 == N2, F1 == F2, A1 == A2 -> 
+  lists:reverse(CheckStubs) ++ [NewStub | Rest];
+set_stub(NewStub = #stub {}, _Stubs = [Stub = #stub{}|Rest], CheckStubs) when is_list(CheckStubs) -> 
+  set_stub(NewStub, Rest, [Stub | CheckStubs]).
+
+check_arity(Fun, StubFun) when is_function(Fun), is_function(StubFun)->
+  {arity, StubFunArity} = erlang:fun_info(StubFun, arity),
+  case erlang:fun_info(Fun, arity) of
+    {arity, StubFunArity} -> ok;
+    _ -> {error, arity_mismatch}
+  end;
+check_arity(Fun, _ReturnValue) when is_function(Fun) ->
+  ok.
+%%----------------------------------------------------
+%% mocking parse transform
+%%----------------------------------------------------
+
+
 %% @doc transforms all function of a module that is compiled with the compile option
 %% <code>-compile({parse_transform, eunit_mock})</code> so that they can be mocked
 %% and return the result of the mock function instead of the real function.
 parse_transform(Forms, _Options) ->
-    forms(insert_mocked_atrribute(Forms)).
+    forms(insert_mocked_atrribute(Forms), Forms).
 
 insert_mocked_atrribute(Forms) ->
   lists:foldr(
@@ -85,68 +252,73 @@ insert_mocked_atrribute(Forms) ->
 
 %% forms(Fs) -> lists:map(fun (F) -> form(F) end, Fs).
 
-forms([F0|Fs0]) ->
-    F1 = form(F0),
-    Fs1 = forms(Fs0),
+forms([F0|Fs0], AllForms) ->
+    F1 = form(F0, AllForms),
+    Fs1 = forms(Fs0, AllForms),
     [F1|Fs1];
-forms([]) -> [].
+forms([], _) -> [].
 
 %% -type form(Form) -> Form.
 %%  Here we show every known form and valid internal structure. We do not
 %%  that the ordering is correct!
 
 %% First the various attributes.
-form({attribute,Line,module,Mod}) ->
+form({attribute,Line,module,Mod}, _Forms) ->
     {attribute,Line,module,Mod};
-form({attribute,Line,file,{File,Line}}) ->	%This is valid anywhere.
+form({attribute,Line,file,{File,Line}}, _Forms) ->	%This is valid anywhere.
     {attribute,Line,file,{File,Line}};
-form({attribute,Line,export,Es0}) ->
+form({attribute,Line,export,Es0}, _Forms) ->
     Es1 = farity_list(Es0),
     {attribute,Line,export,Es1};
-form({attribute,Line,import,{Mod,Is0}}) ->
+form({attribute,Line,import,{Mod,Is0}}, _Forms) ->
     Is1 = farity_list(Is0),
     {attribute,Line,import,{Mod,Is1}};
-form({attribute,Line,compile,C}) ->
+form({attribute,Line,compile,C}, _Forms) ->
     {attribute,Line,compile,C};
-form({attribute,Line,record,{Name,Defs0}}) ->
+form({attribute,Line,record,{Name,Defs0}}, _Forms) ->
     Defs1 = record_defs(Defs0),
     {attribute,Line,record,{Name,Defs1}};
-form({attribute,Line,asm,{function,N,A,Code}}) ->
+form({attribute,Line,asm,{function,N,A,Code}}, _Forms) ->
     {attribute,Line,asm,{function,N,A,Code}};
-form({attribute,Line,Attr,Val}) ->		%The general attribute.
+form({attribute,Line,Attr,Val}, _Forms) ->		%The general attribute.
     {attribute,Line,Attr,Val};
-form({function,Line,Name0,Arity0,Clauses0}) ->
+form({function,Line,Name0,Arity0,Clauses0}, Forms) ->
     NewClauses = case Clauses0 of
-      [{clause, LineNumber, Args, Guards, Content}] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= do_mock -> 
+      [{clause, LineNumber, Args, Guards, Content}] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
         %io:format("mocking function ~w/~w~n", [Name0, Arity0]),
-        transform_mock_fun(LineNumber, Args, Guards, Content);
+        ModuleName = get_module_name(Forms),
+        transform_mock_fun(LineNumber, ModuleName, Name0, Args, Guards, Content);
       _ -> Clauses0
     end,
     {Name,Arity,Clauses} = function(Name0, Arity0, NewClauses),
     {function,Line,Name,Arity,Clauses};
 % Mnemosyne, ignore...
-form({rule,Line,Name,Arity,Body}) ->
+form({rule,Line,Name,Arity,Body}, _Forms) ->
     {rule,Line,Name,Arity,Body}; % Dont dig into this
 %% Extra forms from the parser.
-form({error,E}) -> {error,E};
-form({warning,W}) -> {warning,W};
-form({eof,Line}) -> {eof,Line}.
+form({error,E}, _Forms) -> {error,E};
+form({warning,W}, _Forms) -> {warning,W};
+form({eof,Line}, _Forms) -> {eof,Line}.
 
 
-transform_mock_fun(LineNumber, Args, Guards, Content) when is_integer(LineNumber), is_list(Args), is_list(Guards) -> 
-  [{clause, LineNumber, transform_mock_args(Args, LineNumber), Guards, trasform_mock_content(Content, LineNumber, length(Args))}].
+get_module_name([]) -> {error, module_name_not_found};
+get_module_name([{attribute,_Line,module,ModuleName} | _]) -> ModuleName;
+get_module_name([_ | Rest]) -> get_module_name(Rest).
+
+transform_mock_fun(LineNumber, ModuleName, FunName, Args, Guards, Content) when is_integer(LineNumber), is_list(Args), is_list(Guards) -> 
+  [{clause, LineNumber, transform_mock_args(Args, LineNumber), Guards, trasform_mock_content(Content, LineNumber, ModuleName, FunName, length(Args))}].
 
 transform_mock_args(Args, LineNumber) when is_list(Args) ->
   element(1, lists:foldr(fun(Arg, {Mapped, Index}) -> 
     {[{match,LineNumber,{var,LineNumber,list_to_atom("__Arg" ++ integer_to_list(Index) ++ "__")},Arg} | Mapped], Index - 1}
   end, {[], length(Args)}, Args)).
   
-trasform_mock_content(Content, LineNumber, Arity) ->
+trasform_mock_content(Content, LineNumber, ModuleToMock, FunToMock, Arity) ->
   [{'case',LineNumber,
     {call,LineNumber,
-     {remote,LineNumber,{atom,LineNumber,emock},{atom,LineNumber,do_mock}},
-     [{atom,LineNumber,emock},
-      {atom,LineNumber,mocked_fun},
+     {remote,LineNumber,{atom,LineNumber,eunit_mock},{atom,LineNumber,execute__mock__}},
+     [{atom,LineNumber,ModuleToMock},
+      {atom,LineNumber,FunToMock},
       {integer,LineNumber,Arity},
       create_mock_execute_aguments(Arity, LineNumber),
       {call,LineNumber,{atom,LineNumber,self},[]}]},
