@@ -14,13 +14,24 @@ standart_module_should_return_normal_value_test() ->
   ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}])),
   ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()).
   
+recompile_with_mocking_parse_transform_test() ->  
+  ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}])),
+  ?assertMatch(false, is_mocked(mock_dummy)),
+  ?assertMatch(ok, recompile_for_mocking(mock_dummy)),
+  ?assertMatch({value,{mocked,[true]}}, lists:keysearch(mocked, 1, mock_dummy:module_info(attributes))),
+  ?assertMatch(true, is_mocked(mock_dummy)).
+  
+stubbed_module_should_be_recompiled_with_mock_parse_transform_test() ->  
+  ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}])),
+  ?assertMatch(false, is_mocked(mock_dummy)),
+  ?stub(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Return = stubbed_value),
+  ?assertMatch(true, is_mocked(mock_dummy)).
+  
 stubbed_module_should_return_fixed_stubbed_value_test() ->
-  ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}, {parse_transform, eunit_mock}])),
   ?stub(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Return = stubbed_value),
   ?assertMatch(stubbed_value, mock_dummy:fun_with_arity_zero()).
 
 stubbed_module_should_return_stubbed_value_from_fun_test() ->
-  ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}, {parse_transform, eunit_mock}])),
   ?stub(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Return = fun() -> stubbed_value end),
   ?assertMatch(stubbed_value, mock_dummy:fun_with_arity_zero()).
 
@@ -49,15 +60,15 @@ find_stub_test() ->
 
 set_stub_test() ->
   Stubs = [Stub1 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0, returns = 0},  
-           Stub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(Arg) -> 1 end},   
+           Stub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(_Arg) -> 1 end},   
            Stub3 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_two,  arity = 2, returns = 2}],  
     
   Stub1Changed = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0, returns = a},  
-  Stub2Changed = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(Arg) -> b end},   
+  Stub2Changed = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(_Arg) -> b end},   
   Stub3Changed = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_two,  arity = 2, returns = c},  
 
   NewStub1 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 1, returns = "A"},  % same fun but different arity
-  NewStub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_xxx,  arity = 1, returns = fun(Arg) -> "B" end}, % new fun but same module
+  NewStub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_xxx,  arity = 1, returns = fun(_Arg) -> "B" end}, % new fun but same module
   NewStub3 = #stub{ module_name = mock_dummy_x, fun_name = fun_with_arity_two,  arity = 2, returns = "C"}, % same fun, but different module
       
   ?assertMatch([Stub1Changed, Stub2, Stub3], set_stub(Stub1Changed, Stubs)),

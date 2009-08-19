@@ -97,9 +97,17 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
     ok ->
       case fun_to_stub_record(Fun) of 
         _Error = {error, Error} -> Error;
-        Stub ->
-          set_stub(Stub#stub { returns = ReturnValue}),
-          ok
+        Stub = #stub{module_name = ModuleName} ->
+          WasCompiledWithMocking = case is_mocked(ModuleName) of
+            false -> recompile_for_mocking(ModuleName);
+            true -> ok
+          end,
+          case WasCompiledWithMocking of
+            ok ->
+              set_stub(Stub#stub { returns = ReturnValue}),
+              ok;
+            Error -> Error
+          end
       end;
     {error, Reason} -> 
       Reason
@@ -111,14 +119,14 @@ execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) ->
   case get_stub(ModuleName, FunctionName, Arity) of 
     false ->
       no____mock;
-    {value, Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun, Arity) ->
+    {value, _Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun, Arity) ->
       erlang:apply(ReturnFun, Arguments);
-    {value, Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun) ->
+    {value, _Stub = #stub {returns = ReturnFun}} when is_function(ReturnFun) ->
       .erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
                                                  atom_to_list(FunctionName) ++ "/" ++ 
                                                  integer_to_list(Arity))},
                                       {stub, ReturnFun}]});
-    {value, Stub = #stub {returns = ReturnValue}} ->
+    {value, _Stub = #stub {returns = ReturnValue}} ->
       ReturnValue
   end.
 
@@ -164,7 +172,7 @@ handle_call(Event, _From, State) ->
                             {event, Event}]),
   {reply, error, State}.
 
-terminate(Reason, State) ->
+terminate(_Reason, _State) ->
   ok.
 
 code_change(_OldVsn, Data, _Extra) ->
@@ -189,7 +197,7 @@ assert_started() ->
   case global:whereis_name(?MODULE) of
     undefined ->
       ?assertMatch({ok, _}, gen_server:start({global, ?MODULE}, ?MODULE, [], []));
-    Pid -> ok
+    _Pid -> ok
   end.
 
 %%----------------------------------------------------
@@ -208,10 +216,10 @@ fun_to_stub_record(Fun) when is_function(Fun) ->
 
 find_stub(ModuleName, FunName, Arity, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   false;
-find_stub(ModuleName, FunName, Arity, Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A} | _]) when ModuleName == M, FunName == F, Arity == A,
+find_stub(ModuleName, FunName, Arity, _Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A} | _]) when ModuleName == M, FunName == F, Arity == A,
                                                                                                                   is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   {value, Stub};
-find_stub(ModuleName, FunName, Arity, Stubs = [#stub{ } | Rest]) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+find_stub(ModuleName, FunName, Arity, _Stubs = [#stub{ } | Rest]) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   find_stub(ModuleName, FunName, Arity, Rest).
   
 set_stub(NewStub = #stub {}, Stubs) when is_list(Stubs) ->
@@ -233,6 +241,31 @@ check_arity(Fun, StubFun) when is_function(Fun), is_function(StubFun)->
   end;
 check_arity(Fun, _ReturnValue) when is_function(Fun) ->
   ok.
+  
+is_mocked(ModuleName) when is_atom(ModuleName) ->
+  case lists:keysearch(mocked, 1, ModuleName:module_info(attributes)) of
+    false -> false;
+    {value,{mocked,[true]}} -> true
+  end.
+  
+recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
+  case ModuleName:module_info(compile) of
+    CompileInfo when is_list(CompileInfo) ->
+      {value, {options, CompileOptions}} = lists:keysearch(options, 1, CompileInfo),
+      {value, {source, SourcePath}} = lists:keysearch(source, 1, CompileInfo),
+      case compile:file(SourcePath, [{parse_transform, eunit_mock} | CompileOptions]) of 
+        {ok, ModuleName} ->
+          code:purge(ModuleName),
+          case code:load_file(ModuleName) of
+            {module, ModuleName} ->
+              ok;
+            ReloadError -> {error, ReloadError}
+          end;
+        CompileError -> {error, CompileError}
+      end;
+    Error -> {error, Error}
+  end.
+  
 %%----------------------------------------------------
 %% mocking parse transform
 %%----------------------------------------------------
