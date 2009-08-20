@@ -339,8 +339,23 @@
 -endif.
 -define(_stub(Fun, ReturnValue), ?_test(?stub(Fun, ReturnValue))).
 
-
-
+-ifdef(NOASSERT).
+-define(assertCalled(Fun, Times, ReturnValue), ok).
+-else.
+-define(assertCalled(Fun, Times, ReturnValue),
+	((fun () ->
+	    case (eunit_mock:assert_called(Fun, Times, ReturnValue, ?MODULE, ?LINE)) of
+		ok -> ok;
+		__V -> .erlang:error({assertCalled_failed,
+				      [{module, ?MODULE},
+				       {line, ?LINE},
+				       {function, (??Fun)},
+				       {return_value, (??ReturnValue)},
+				       {value, __V}]})
+	    end
+	  end)())).
+-endif.
+-define(_assertCalled(Fun, Times, ReturnValue), ?_test(?assertCalled(Fun, Times, ReturnValue))).
 
 %% Macros for running operating system commands. (Note that these
 %% require EUnit to be present at runtime, or at least eunit_lib.)
