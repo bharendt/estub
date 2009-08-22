@@ -105,33 +105,14 @@ set_stub_test() ->
   ?assertMatch([NewStub3, Stub1, Stub2, Stub3], set_stub(NewStub3, Stubs)),
   ?assertMatch([NewStub3, NewStub2, NewStub1, Stub1, Stub2, Stub3], set_stub(NewStub3, set_stub(NewStub2, set_stub(NewStub1, Stubs)))).
 
-
-update_assertion_test() ->
-  erlang:throw("NOT IMPLEMENTED").
-  % Assertions = [Assertion1 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  
-  %               Assertion2 = #assert_call {required_call_count = 2,  current_call_count = 1, expected = {args, [a,b]}, location = {my_test, 2}},   
-  %               Assertion3 = #assert_call {required_call_count = 1,  current_call_count = 0, expected = {return, foo}, location = {my_test, 3}},                
-  %               Assertion4 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = fun(_A) -> ok end, location = {my_test, 4}}],  
-  %   
-  % Assertion1Changed = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  
-  % Assertion2Changed = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},   
-  % Assertion3Changed = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  
-  % 
-  % NewAssertion1 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  % same fun but different arity
-  % NewAssertion2 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}}, % new fun but same module
-  % NewAssertion3 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}}, % same fun, but different module
-  %     
-  % ?assertMatch([Assertion1Changed, Assertion2, Assertion3], set_assertion(Assertion1Changed, Assertions)),
-  % ?assertMatch([Assertion1, Assertion2Changed, Assertion3], set_assertion(Assertion2Changed, Assertions)),
-  % ?assertMatch([Assertion1, Assertion2, Assertion3Changed], set_assertion(Assertion3Changed, Assertions)),
-  % ?assertMatch([Assertion1Changed, Assertion2Changed, Assertion3Changed], set_assertion(Assertion3Changed, set_assertion(Assertion2Changed, set_assertion(Assertion1Changed, Assertions)))),
-  % 
-  % ?assertMatch([NewAssertion1], set_assertion(NewAssertion1, _Assertions = [])),
-  % ?assertMatch([NewAssertion1, Assertion1, Assertion2, Assertion3], set_assertion(NewAssertion1, Assertions)),
-  % ?assertMatch([NewAssertion2, Assertion1, Assertion2, Assertion3], set_assertion(NewAssertion2, Assertions)),
-  % ?assertMatch([NewAssertion3, Assertion1, Assertion2, Assertion3], set_assertion(NewAssertion3, Assertions)),
-  % ?assertMatch([NewAssertion3, NewAssertion2, NewAssertion1, Assertion1, Assertion2, Assertion3], set_assertion(NewAssertion3, set_assertion(NewAssertion2, set_assertion(NewAssertion1, Assertions)))).
-
+get_assertions_and_reset_test() ->
+  _Assertions = [Assertion1 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  
+                 Assertion2 = #assert_call {required_call_count = 2,  current_call_count = 1, expected = {args, [a,b]}, location = {my_test, 2}},   
+                 Assertion3 = #assert_call {required_call_count = 1,  current_call_count = 0, expected = {return, foo}, location = {my_test, 3}}],  
+  Stubs = [ Stub1 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0, returns = 0, assertions = [Assertion1, Assertion2]},  
+           _Stub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(_Arg) -> 1 end, assertions = []},   
+            Stub3 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_two,  arity = 2, returns = 2, assertions = [Assertion3]}],  
+  ?assertMatch({reply, _StubsWithAssertions = [Stub1, Stub3], #state {stubs = []}}, handle_call({get_assertions_and_reset, global}, self, #state{stubs = Stubs})). 
 
 check_arity_test() ->
   ?assertMatch(ok, check_arity(fun mock_dummy:fun_with_arity_zero/0, fun() -> result end)),
@@ -157,6 +138,7 @@ mocked_module_should_be_recompiled_with_mock_parse_transform_test() ->
   ?assertCompiledNoStub(mock_dummy),
   ?assertMatch(false, is_mocked(mock_dummy)),
   ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Times = 1, ignore),
+  ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
 assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
@@ -167,11 +149,23 @@ assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() ->
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
-foo_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, ignore).
+assert_called_once_test() ->
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = once, ignore),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
-bar_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Args = {args, []}).
+assert_called_one_times_test() ->
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Args = {args, [1]}),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
+
+assert_called_any_times_once_test() ->
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = ignore, _Args = {args, [1]}),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
+
+assert_called_any_times_more_calls_test() ->
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = ignore, _Args = {args, [1]}),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(2)),
+  ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_once_test() -> 
   ?assertCompiled(mock_dummy),
@@ -209,7 +203,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_on
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Arguments = {args, [foo]}),
-    mock_dummy:fun_with_arity_one(foo)
+    mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 

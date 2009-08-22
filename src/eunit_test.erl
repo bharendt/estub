@@ -61,7 +61,8 @@ prune_trace([], Tail) ->
 
 run_testfun(F) ->
     try
-	F()
+      F(),
+      eunit_mock:check_assertions()
     of Value ->
 	    {ok, Value}
     catch

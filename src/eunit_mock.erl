@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/5]).
+-export([stub/2, assert_called/5, check_assertions/0]).
 
 %% the current state of the mock server
 -record(state, {
@@ -152,7 +152,7 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
 %%    Expected = {args, Arguments::arguments()} | fun() | ignore | {return, term()}, 
 %%    arguments() = [term()]
 assert_called(Fun, Times, Expected, MODULE, LINE) when is_function(Fun), 
-                                                       is_list(Expected) orelse Expected == ignore orelse is_tuple(Expected) -> 
+                                                       is_list(Expected) orelse Expected == ignore orelse is_tuple(Expected) orelse is_function(Expected) -> 
   case fun_to_stub_record(Fun) of 
     _Error = {error, Error} -> Error;
     Stub = #stub{module_name = ModuleName} ->
@@ -199,13 +199,10 @@ execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) ->
 set_stub(Stub = #stub{}) ->
   cast_to_mock_server({set_stub, Stub}).
 
-set_stub(ModuleName, FunName, Arity, ReturnValue) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
-  cast_to_mock_server({set_stub, #stub{ module_name = ModuleName, fun_name = FunName, arity = Arity, returns = ReturnValue}}).
-
 get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   call_mock_server({get_stub, ModuleName, FunName, Arity}).
 
-add_assert_call(Stub = #stub {}, Times, Expected, MODULE, LINE) when is_integer(Times) ->
+add_assert_call(Stub = #stub {}, Times, Expected, MODULE, LINE) when is_integer(Times); Times == at_least_once ->
   Assertion = #assert_call {
     required_call_count = Times,
     expected = Expected,
@@ -213,7 +210,17 @@ add_assert_call(Stub = #stub {}, Times, Expected, MODULE, LINE) when is_integer(
   },
   cast_to_mock_server({add_assert_call, Stub, Assertion}).
 
+check_assertions() ->
+  case global:whereis_name(?MODULE) of
+    undefined -> ok; % assume that no assertions were made if server is not running
+    Pid -> 
+      case gen_server:call(Pid, {get_assertions_and_reset, global}) of
+        [] -> ok; % no assertions were made
+        [#stub{}|_] = Stubs -> check_assertions(Stubs, ok)          
+      end
+  end.
 
+  
 %%----------------------------------------------------
 %% gen_server implementation
 %%----------------------------------------------------
@@ -247,6 +254,16 @@ handle_cast(Event, State) ->
 
 handle_call({get_stub, ModuleName, FunName, Arity}, _From, State = #state{stubs = Stubs}) ->
   {reply, find_stub(ModuleName, FunName, Arity, Stubs), State};
+
+% gets all stubs with assertions and then deletes all local stubs (that were added for one test) 
+handle_call({get_assertions_and_reset, local}, _From, State) ->
+  % TODO: implement. (currently local does the same as global)
+  handle_call({get_assertions_and_reset, global}, _From, State);
+
+% gets all stubs with assertions and then deletes all stubs 
+handle_call({get_assertions_and_reset, global}, _From, State = #state{stubs = Stubs}) ->
+  StubsWithAssertions = [Stub || Stub = #stub{assertions = Assertions} <- Stubs, Assertions /= []],
+  {reply, StubsWithAssertions, State#state {stubs = []}};
 
 handle_call(Event, _From, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
@@ -367,6 +384,9 @@ recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
   
 times_to_int(once) -> 1;  
 times_to_int(twice) -> 2;  
+times_to_int(any) -> at_least_once;  
+times_to_int(ignore) -> at_least_once;  
+times_to_int(at_least_once) -> at_least_once;  
 times_to_int(Times) when is_integer(Times) -> Times.  
 
 
@@ -408,6 +428,28 @@ return_mock_result(Fun, ModuleName, FunctionName, Arity, _Arguments, _Self) when
                                   {stub, Fun}]});
 return_mock_result(Value, _ModuleName, _FunctionName, _Arity, _Arguments, _Self) -> 
   Value.
+  
+check_assertions([], Acc) ->
+  Acc;
+check_assertions([Stub = #stub{ assertions = Assertions } | Rest], Acc) ->
+  NewAcc = check_assertions(Stub, Assertions, Acc),
+  check_assertions(Rest, NewAcc).
+  
+check_assertions(_Stub = #stub{}, [], Acc) ->
+  Acc;
+check_assertions(Stub = #stub{}, [#assert_call{ required_call_count = at_least_once, current_call_count = Current} | Rest], _Acc) when Current > 0 ->
+  check_assertions(Stub, Rest, ok);
+check_assertions(Stub = #stub{}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required == Current ->
+  check_assertions(Stub, Rest, ok);
+check_assertions(Stub = #stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
+  .erlang:error({assertCalled, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))},
+                                {required, Required},
+                                {current, Current}]}),
+  check_assertions(Stub, Rest, error);
+check_assertions(Stub = #stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}, [UnknownAssertion | Rest], _Acc) ->
+  .erlang:error({unknown_assertion, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))},
+                                     {assertion, UnknownAssertion}]}),
+  check_assertions(Stub, Rest, error).
   
 %%----------------------------------------------------
 %% mocking parse transform
