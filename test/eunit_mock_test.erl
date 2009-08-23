@@ -24,6 +24,9 @@
   end(__Module__)).
 
 
+%%----------------------------------------------------
+%% tests for mocked functions
+%%----------------------------------------------------
 
 apply_parse_transform_should_set_mocked_attribute_test() ->
   ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}, {parse_transform, eunit_mock}])),
@@ -222,6 +225,72 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_a
     mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
+
+assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
+  ?assertCompiled(mock_dummy),
+  TestFun = fun() ->
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, fun(_Arg = foo) -> ok end),
+    % stubbed fun should not be invoked here, because stub fun args will not match
+    ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(bar)) 
+  end,
+  ?assertMatch(error, eunit:test(TestFun)).
+
+assert_called_should_succedd_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
+  ?assertCompiled(mock_dummy),
+  TestFun = fun() ->
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, fun(_Arg = foo) -> ok end),
+    ?assertMatch(ok, mock_dummy:fun_with_arity_one(foo)) 
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
+
+
+%%----------------------------------------------------
+%% tests for mocked gen_server
+%%----------------------------------------------------
+
+foo_test() ->
+  ?foo({add, _, _}).
+
+mock_gen_server_test() ->
+  Pid = ?stub(gen_server, _HandleCallFun = fun(_Event = {add, A, B}) -> A + B end),
+  ?assertCalled(Pid, _Times = once, {args, {add, 1, 9}}),
+  ?assertCalledWith(Pid, _Times = once, {add, _, _}),
+  ?assertCalledWithAndReturns(Pid, _Times = once, {add, _, _}, _Return = ok),
+  ?assertCalledWithAndShouldReturn(Pid, _Times = once, {store_value, _, _}, _ShouldReturn = true),
+  ?assertCalledAndShouldReturn(Pid, _Times = once, _ShouldReturn = true),
+  ?assertCalled(Pid, ?once,  [{with, [10, 1]}, {shouldReturn, 11}]),
+  ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), {andShouldReturn, 11}]),
+  ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), ?andShouldReturn({stored, _UpdatedValue})]),
+  ?assertCalled(Pid, ?twice, [?with({store_value, _, _}), ?andReturn(ok)]),
+  ?assertCalled(Pid, _Times = once, [args]),
+  ?assertCalled(Pid, _Times = once, {returns, 10}),
+  ?assertCalled(Pid, _Times = once, {should_return, 10}).
+  
+
+new_mock_test() ->
+  Pid = self(),
+  ?assertCalled_(Pid, ?once_),
+  ?assertCalled_(Pid, ?once_ ?with_({store_value, _, _})),
+  ?assertCalled_(Pid, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+  ?assertCalled_(Pid, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
+
+  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_),
+  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_ ?with_({store_value, _, _})),
+  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
+    
+  ?assertCalled_(gen_server_dummy, ?once_ ?with_({store_value, _, _})),
+  ?assertCalled_(gen_server_dummy, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+  ?assertCalled_(gen_server_dummy, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)).
+
+  
+% bar_test() ->   
+%   Pid = ?stub(gen_server, _HandleCallFun = fun(_Event = {add, A, B}) -> A + B end),
+%   ?assertCalled(Pid, _Times = once, {add, _, _}).
+  
+  % Pid = ?stub(gen_server, _HandleCallFun = fun(_Event = {add_acc, A}, State) -> {_Return = A + State, NewState = A + State} end, _InititalState = 0),
+  % Pid = ?stub(gen_server, _HandleCallFun = fun(_Event, _From, State) -> {reply, _Return = true, State} end, _InititalState = 0),
+  % ?stub(_ExistingGenServerModule = gen_server_dummy, )
 
   
 %%----------------------------------------------------

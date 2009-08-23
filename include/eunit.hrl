@@ -326,8 +326,16 @@
 -else.
 -define(stub(Fun, ReturnValue),
 	((fun () ->
+	    __FunAsModuleName = Fun, % to avoid compile error for guard expression is_atom
 	    case (eunit_mock:stub(Fun, ReturnValue)) of
+	  __Pid when is_atom(__FunAsModuleName), is_pid(__Pid) -> __Pid; % for stubbing gen_servers and gen_fsm    
 		ok -> ok;
+    % __V when is_atom(__FunAsModuleName) -> .erlang:error({stub_gen_process_failed,
+    %           [{module, ?MODULE},
+    %            {line, ?LINE},
+    %            {gen_process, (??Fun)},
+    %            {return_value, (??ReturnValue)},
+    %            {value, __V}]});
 		__V -> .erlang:error({stub_failed,
 				      [{module, ?MODULE},
 				       {line, ?LINE},
@@ -356,6 +364,50 @@
 	  end)())).
 -endif.
 -define(_assertCalled(Fun, Times, ReturnValue), ?_test(?assertCalled(Fun, Times, ReturnValue))).
+
+-ifdef(NOASSERT).
+-define(assertCalledWith(Fun, Times, ReturnValue), ok).
+-else.
+-define(assertCalledWith(Fun, Times, Arguments),
+	((fun () ->
+	    __CheckArgumentsFun = fun(Arguments) -> no____mock end,
+	    case (eunit_mock:assert_called(Fun, Times, __CheckArgumentsFun, ?MODULE, ?LINE)) of
+		ok -> ok;
+		__V -> .erlang:error({assertCalled_failed,
+				      [{module, ?MODULE},
+				       {line, ?LINE},
+				       {function, (??Fun)},
+				       {arguments, (??Arguments)},
+				       {value, __V}]})
+	    end
+	  end)())).
+-endif.
+-define(_assertCalledWith(Fun, Times, Arguments), ?_test(?assertCalledWith(Fun, Times, Arguments))).
+
+-define(foo(Term),(fun() -> Fun = fun(Term) -> ok end end)()).
+-define(assertCalledWithAndReturns(Fun, Times, Arguments, ReturnValue), ok).
+-define(assertCalledWithAndShouldReturn(Fun, Times, Arguments, ReturnValue), ok).
+-define(assertCalledAndShouldReturn(Fun, Times, ReturnValue), ok).
+
+-define(with(Args),{with, fun(Args) -> no____mock end}).
+-define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> no____mock end}).
+-define(andReturn(ReturnValue),{andReturn, ReturnValue}).
+-define(once, once).
+-define(twice, twice).
+
+
+-define(assertCalled_(Fun, Requirements),
+	((fun () ->
+	  Times = Requirements options_end],
+	  eunit_mock:assert_called_(Fun, Times, Options, ?MODULE, ?LINE)
+	  end)())).
+
+-define(once_, 1, Options = [).
+-define(twice_, 2, Options = [).
+-define(times_, , Options = [).
+-define(with_(Args),{with, fun(Args) -> no____mock end, ??Args},).
+-define(andShouldReturn_(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> no____mock end, ??ExpectedResult},).
+-define(andReturn_(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
 
 %% Macros for running operating system commands. (Note that these
 %% require EUnit to be present at runtime, or at least eunit_lib.)

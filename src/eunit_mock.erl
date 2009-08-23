@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/5, check_assertions/0]).
+-export([stub/2, assert_called/5, assert_called_/5, check_assertions/0]).
 
 %% the current state of the mock server
 -record(state, {
@@ -124,7 +124,13 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
       end;
     {error, Reason} -> 
       Reason
-  end.
+  end;
+stub(gen_server, ReturnValue) ->
+  self();
+stub(gen_fsm, ReturnValue) ->
+  self();
+stub(GenSomethingModule, ReturnValue) when is_atom(GenSomethingModule) ->
+  self().
 
 %% @doc Adds an assertion for a test that checks that <code>Fun</code> is called
 %% n times. Different kinds of expectations can be made:
@@ -169,7 +175,14 @@ assert_called(Fun, Times, Expected, MODULE, LINE) when is_function(Fun),
           end;
         Error -> Error
       end
-  end.
+  end;
+assert_called(GenSomethingPid, Times, Expected, MODULE, LINE) when is_pid(GenSomethingPid), 
+                                                       is_list(Expected) orelse Expected == ignore orelse is_tuple(Expected) orelse is_function(Expected) -> 
+  ok.
+
+assert_called_(Fun, Times, Options, MODULE, LINE) ->
+  io:format("assert_called_(~p, ~p, ~p, ~p, ~p)~n", [Fun, Times, Options, MODULE, LINE]), ok. 
+
 
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
   io:format("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
