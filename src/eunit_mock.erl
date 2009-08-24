@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/5, assert_called_/5, check_assertions/0]).
+-export([stub/2, assert_called/5, check_assertions/0]).
 
 %% the current state of the mock server
 -record(state, {
@@ -92,7 +92,9 @@
 -record(assert_call, {
     required_call_count,    %% int(): indicates hov often the function should be called 
     current_call_count = 0, %% int(): indicates how often the function was called (with matching arguments)
-    expected,               %% fun() | {args, Arguments = []} | ignore, the expected argument match or stub fun
+    expected_arguments,     %% {with, match(), MatchText::string()} where match() = fun() | term()
+    expected_return,        %% {andShouldReturn, match(), MatchText::string()} where match() = fun() | term()
+    returns,                %% {andReturn, return(), ReturnText::string()} where return() = fun() | term()
     location                %% tuple() = {MODULE, LINE}: the location of the assertion
   }).
 
@@ -125,64 +127,53 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
     {error, Reason} -> 
       Reason
   end;
-stub(gen_server, ReturnValue) ->
+stub(gen_server, _ReturnValue) ->
   self();
-stub(gen_fsm, ReturnValue) ->
+stub(gen_fsm, _ReturnValue) ->
   self();
-stub(GenSomethingModule, ReturnValue) when is_atom(GenSomethingModule) ->
+stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
   self().
 
-%% @doc Adds an assertion for a test that checks that <code>Fun</code> is called
-%% n times. Different kinds of expectations can be made:
-%% <ul>
-%%  <li><code>ignore</code>: it is not checked, with which parameters the function is called</li>
-%%  <li><code>{return, Return = term()}</code>: it is not checked, with which parameters the function is called, but
-%%            <code>Return</code> is returned instead of the result of the original function</li>
-%%  <li><code>{args, Arguments}</code>: checks whether the function is called with exactly this arguments</li>
-%%  <li><code>Fun::fun()</code>: stubs the original fun so that the new fun is called instead of the real fun (see eunit_mock:stub/2)
-%%            if pattern matching is used, it can be used also to check the arguments. E.g.
-%%  <pre>
-%%  ?assertCalled(fun my_module:my_fun/1, once, fun(Arg = {info, _}) -> stubbed end),
-%%  % this call does not affect the assertion, because the argument does not match the args of the stubbed fun
-%%  my_module:my_fun({error, no_affect}), % and returns the original value from the original fun
-%%  % but this affects the assertion, because the argument matches the subbed fun
-%%  ?assertMatch(stubbed, my_module:my_fun({info, assertion_succeeded})). % and the stub is executed instead of the real function
-%%  </pre>
-%% </li>
-%% </ul>
+%% @doc Adds an assertion for a test that checks that <code>Mock</code> is called
+%% n times. 
 %% <code>MODULE</code> and <code>LINE</code> are set by the <code>?assertCalled</code>
 %% macro to be able to identify the assertion when it failed.
-%% @spec assert_called(Fun::fun(), Times::times(), Expected::expected(), MODULE::atom(), LINE::int()) -> ok | {error, Reason} 
+%% @spec assert_called(Mock::mock(), Times::times(), Options::expected(), MODULE::atom(), LINE::int()) -> ok | {error, Reason} 
 %%  where
+%%    mock() = fun() | pid() | mockable_module(),
+%%    mockable_module() = gen_server_module() | gen_fsm_module(),
+%%    gen_server_module() = atom(),
+%%    gen_fsm_module = atom(),
 %%    times() = once | twice | integer() | ignore, 
-%%    Expected = {args, Arguments::arguments()} | fun() | ignore | {return, term()}, 
+%%    options() = [option()],
+%%    option() = {with, match(), MatchText::string()} | {andShouldReturn, match(), MatchText::string()} | {andReturn, return(), ReturnText::string()}, 
+%%    match() = fun() | term(),
+%%    return() = fun() | term(),
 %%    arguments() = [term()]
-assert_called(Fun, Times, Expected, MODULE, LINE) when is_function(Fun), 
-                                                       is_list(Expected) orelse Expected == ignore orelse is_tuple(Expected) orelse is_function(Expected) -> 
-  case fun_to_stub_record(Fun) of 
-    _Error = {error, Error} -> Error;
-    Stub = #stub{module_name = ModuleName} ->
-      WasCompiledWithMocking = case is_mocked(ModuleName) of
-        false -> recompile_for_mocking(ModuleName);
-        true -> ok
-      end,
-      case WasCompiledWithMocking of
-        ok ->
-          case check_expected_argument(Fun, Expected) of
-            ok ->
-              add_assert_call(Stub, times_to_int(Times), Expected, MODULE, LINE);
-            Error -> Error
-          end;
-        Error -> Error
-      end
-  end;
-assert_called(GenSomethingPid, Times, Expected, MODULE, LINE) when is_pid(GenSomethingPid), 
-                                                       is_list(Expected) orelse Expected == ignore orelse is_tuple(Expected) orelse is_function(Expected) -> 
-  ok.
-
-assert_called_(Fun, Times, Options, MODULE, LINE) ->
-  io:format("assert_called_(~p, ~p, ~p, ~p, ~p)~n", [Fun, Times, Options, MODULE, LINE]), ok. 
-
+assert_called(Mock, Times, Options, MODULE, LINE) when (is_function(Mock) orelse is_pid(Mock) orelse is_atom(Mock)), 
+                                                       (is_integer(Times) orelse Times == at_least_once),
+                                                       is_list(Options) -> 
+  if is_function(Mock) ->
+    case fun_to_stub_record(Mock) of 
+      _Error = {error, Error} -> Error;
+      Stub = #stub{module_name = ModuleName, arity = Arity} ->
+        WasCompiledWithMocking = case is_mocked(ModuleName) of
+          false -> recompile_for_mocking(ModuleName);
+          true -> ok
+        end,
+        case WasCompiledWithMocking of
+          ok ->
+            case create_assertion(Times, Options, Arity) of
+              Assertion = #assert_call{} ->
+                add_assert_call(Stub, Assertion, MODULE, LINE);
+              Error -> Error
+            end;
+          Error -> Error
+        end
+    end;
+  true -> % Mock is gen_server- or gen_fsm- module or pid
+    ok
+  end.
 
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
   io:format("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
@@ -215,13 +206,8 @@ set_stub(Stub = #stub{}) ->
 get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   call_mock_server({get_stub, ModuleName, FunName, Arity}).
 
-add_assert_call(Stub = #stub {}, Times, Expected, MODULE, LINE) when is_integer(Times); Times == at_least_once ->
-  Assertion = #assert_call {
-    required_call_count = Times,
-    expected = Expected,
-    location = {MODULE, LINE}
-  },
-  cast_to_mock_server({add_assert_call, Stub, Assertion}).
+add_assert_call(Stub = #stub {}, Assertion, MODULE, LINE) ->
+  cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}}).
 
 check_assertions() ->
   case global:whereis_name(?MODULE) of
@@ -356,20 +342,38 @@ check_arity(Fun, StubFun) when is_function(Fun), is_function(StubFun)->
   end;
 check_arity(Fun, _ReturnValue) when is_function(Fun) ->
   ok.
+
+create_assertion(Times, Options, Arity) when is_list(Options), is_integer(Arity) ->
+  create_assertion(Options, #assert_call{required_call_count = Times}, Arity);
   
-check_expected_argument(_Fun, ignore) ->
-  ok;
-check_expected_argument(_Fun, {return, _}) ->
-  ok;
-check_expected_argument(Fun, {args, ExpectedArguments}) when is_function(Fun), is_list(ExpectedArguments) ->
-  case erlang:fun_info(Fun, arity) of 
-    {arity, Arity} when Arity == length(ExpectedArguments) -> ok;
-    _ -> {error, arity_mismatch}
-  end;
-check_expected_argument(Fun, StubFun) when is_function(Fun), is_function(StubFun) ->
-  check_arity(Fun, StubFun);
-check_expected_argument(Fun, _Unknown) when is_function(Fun) ->
-  {error, unknown_expectation}.
+create_assertion(_Options = [], Assertion = #assert_call{}, _Arity) ->  
+  Assertion;
+create_assertion(_Options = [options___end | Rest], Assertion = #assert_call{}, Arity) ->  
+  create_assertion(Rest, Assertion, Arity);
+create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, Arity) when is_function(Fun, Arity) ->  
+  create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, Arity);
+create_assertion(_Options = [_Option = {with, Fun, _} | _Rest], _Assertion = #assert_call{}, _Arity) when is_function(Fun) ->  
+  {error, wrong_arity};
+create_assertion(_Options = [Option = {with, Arguments, _} | Rest], Assertion = #assert_call{}, Arity) when is_list(Arguments), length(Arguments) == Arity ->  
+  create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, Arity);
+create_assertion(_Options = [_Option = {with, Arguments, _} | _Rest], _Assertion = #assert_call{}, Arity) when is_list(Arity), length(Arguments) /= Arity ->  
+  {error, wrong_arity};
+create_assertion(_Options = [_Option = {with, SingleArgument, ArgumentText} | Rest], Assertion = #assert_call{}, Arity) ->  
+  create_assertion([{with, [SingleArgument], ArgumentText} | Rest], Assertion, Arity);
+
+create_assertion(_Options = [Option = {andShouldReturn, Fun, _} | Rest], Assertion = #assert_call{}, Arity) when is_function(Fun, Arity) ->  
+  create_assertion(Rest, Assertion#assert_call{expected_return = Option}, Arity);
+create_assertion(_Options = [_Option = {andShouldReturn, Fun, _} | _Rest], _Assertion = #assert_call{}, _Arity) when is_function(Fun) ->  
+  {error, wrong_arity};
+create_assertion(_Options = [Option = {andShouldReturn, _, _} | Rest], Assertion = #assert_call{}, Arity) ->  
+  create_assertion(Rest, Assertion#assert_call{expected_return = Option}, Arity);
+
+create_assertion(_Options = [Option = {andReturn, Fun, _} | Rest], Assertion = #assert_call{}, Arity) when is_function(Fun, Arity) ->  
+  create_assertion(Rest, Assertion#assert_call{returns = Option}, Arity);
+create_assertion(_Options = [_Option = {andReturn, Fun, _} | _Rest], _Assertion = #assert_call{}, _Arity) when is_function(Fun) ->  
+  {error, wrong_arity};
+create_assertion(_Options = [Option = {andReturn, _, _} | Rest], Assertion = #assert_call{}, Arity) ->  
+  create_assertion(Rest, Assertion#assert_call{returns = Option}, Arity).
   
 is_mocked(ModuleName) when is_atom(ModuleName) ->
   case lists:keysearch(mocked, 1, ModuleName:module_info(attributes)) of
@@ -394,14 +398,20 @@ recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
       end;
     Error -> {error, Error}
   end.
-  
-times_to_int(once) -> 1;  
-times_to_int(twice) -> 2;  
-times_to_int(any) -> at_least_once;  
-times_to_int(ignore) -> at_least_once;  
-times_to_int(at_least_once) -> at_least_once;  
-times_to_int(Times) when is_integer(Times) -> Times.  
 
+checkMatch({_, Fun, _}, Found) when is_function(Fun) ->
+  case catch Fun(Found) of
+    {'EXIT', _E} -> io:format("ERROR: ~p~n", [_E]), false;
+    did___match -> true;
+    FunResult -> FunResult
+  end;
+checkMatch({_, Required, _}, Found) ->
+  case Found of
+    Required -> true;
+    _ -> false
+  end;
+checkMatch(undefined, _) ->
+  true.
 
 update_assertions(Assertions, Arity, Arguments) -> 
   % TODO: test
@@ -409,24 +419,32 @@ update_assertions(Assertions, Arity, Arguments) ->
   
 update_assertions([], _Arity, _Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) ->
   {ReturnValue, lists:reverse(UpdatedAssertions), AssertionsMatched};
-update_assertions([Assertion = #assert_call{ expected = {args, Args}} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) ->
-  case Arguments of
-    Args -> update_assertions(Rest, Arity, Arguments, ReturnValue, [Assertion#assert_call{ current_call_count = Assertion#assert_call.current_call_count + 1} | UpdatedAssertions], true);
-    _ -> update_assertions(Rest, Arity, Arguments, ReturnValue, [Assertion | UpdatedAssertions], AssertionsMatched)
-  end;
-update_assertions([Assertion = #assert_call{ expected = ignore} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, _AssertionsMatched) ->
-  update_assertions(Rest, Arity, Arguments, ReturnValue, [Assertion#assert_call{ current_call_count = Assertion#assert_call.current_call_count + 1} | UpdatedAssertions], true);
-update_assertions([Assertion = #assert_call{ expected = {return, Return}} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, _AssertionsMatched) ->
-  update_assertions(Rest, Arity, Arguments, if ReturnValue == ignore -> Return; true -> ReturnValue end, [Assertion#assert_call{ current_call_count = Assertion#assert_call.current_call_count + 1} | UpdatedAssertions], true);
-update_assertions([Assertion = #assert_call{ expected = Fun} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) when is_function(Fun, Arity) ->
-  case catch erlang:apply(Fun, Arguments) of
-    {'EXIT', {function_clause, _}} ->
-      update_assertions(Rest, Arity, Arguments, ReturnValue, [Assertion | UpdatedAssertions], AssertionsMatched);
-    ExecResult -> 
-      update_assertions(Rest, Arity, Arguments, if ReturnValue == ignore -> ExecResult; true -> ReturnValue end, [Assertion#assert_call{ current_call_count = Assertion#assert_call.current_call_count + 1} | UpdatedAssertions], true)
-  end;
-update_assertions([Assertion = #assert_call{ expected = Fun} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) when is_function(Fun) ->
-  update_assertions(Rest, Arity, Arguments, ReturnValue, [Assertion | UpdatedAssertions], AssertionsMatched).
+
+update_assertions([Assertion = #assert_call{ expected_arguments = ExpectedArguments, expected_return = ExpectedReturn, returns = Returns} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) ->
+  Expected = checkMatch(ExpectedArguments, Arguments) andalso checkMatch(ExpectedReturn, Arguments),
+  io:format("Expected = ~p~n", [Expected]),
+  io:format("ExpectedArguments = ~p~n", [ExpectedArguments]),
+  io:format("ExpectedReturn = ~p~n", [ExpectedReturn]),
+  io:format("Arguments = ~p~n", [Arguments]),
+  io:format("checkMatch(ExpectedArguments, Arguments) = ~p~n", [checkMatch(ExpectedArguments, Arguments)]),
+  io:format("checkMatch(ExpectedReturn, Arguments) = ~p~n", [checkMatch(ExpectedReturn, Arguments)]),
+  {NewReturn, ReturnFunMatched} = case Returns of
+    _ when ReturnValue /= ignore -> {ReturnValue, true}; % keep first (= more recent) return value
+    undefined -> {ReturnValue, true};
+    {andReturn, ReturnFun, _} when is_function(ReturnFun, Arity) ->
+      case catch erlang:apply(ReturnFun, Arguments) of
+        {'EXIT', _} -> {ReturnValue, false};
+        ExecResult -> {ExecResult, true}
+      end;
+    {andReturn, FixedReturnValue, _} -> FixedReturnValue
+  end,
+  {NewAssertion, NewAssertionsMatched} = if Expected andalso ReturnFunMatched -> 
+    {Assertion#assert_call{current_call_count = Assertion#assert_call.current_call_count + 1}, true};
+  true ->
+    {Assertion, AssertionsMatched}
+  end,
+  update_assertions(Rest, Arity, Arguments, NewReturn, [NewAssertion | UpdatedAssertions], NewAssertionsMatched).  
+
   
 return_mock_result(ignore, _ModuleName, _FunctionName, _Arity, _Arguments, _Self) -> 
   no____mock;

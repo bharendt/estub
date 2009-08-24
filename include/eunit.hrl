@@ -348,66 +348,38 @@
 -define(_stub(Fun, ReturnValue), ?_test(?stub(Fun, ReturnValue))).
 
 -ifdef(NOASSERT).
--define(assertCalled(Fun, Times, ReturnValue), ok).
+-define(assertCalled(Fun, Requirements), ok).
 -else.
--define(assertCalled(Fun, Times, ReturnValue),
+-define(assertCalled(Fun, Requirements),
 	((fun () ->
-	    case (eunit_mock:assert_called(Fun, Times, ReturnValue, ?MODULE, ?LINE)) of
-		ok -> ok;
-		__V -> .erlang:error({assertCalled_failed,
+	  __Times__ = Requirements options___end],
+	  case (eunit_mock:assert_called(Fun, __Times__, __Options__, ?MODULE, ?LINE)) of
+		  ok -> ok;
+		  __V -> .erlang:error({assertCalled_failed,
 				      [{module, ?MODULE},
 				       {line, ?LINE},
 				       {function, (??Fun)},
-				       {return_value, (??ReturnValue)},
+				       {requirements, (??Requirements)},
 				       {value, __V}]})
 	    end
 	  end)())).
 -endif.
--define(_assertCalled(Fun, Times, ReturnValue), ?_test(?assertCalled(Fun, Times, ReturnValue))).
+-define(_assertCalled(Fun, Requirements), ?_test(?assertCalled(Fun, Requirements))).
 
--ifdef(NOASSERT).
--define(assertCalledWith(Fun, Times, ReturnValue), ok).
--else.
--define(assertCalledWith(Fun, Times, Arguments),
-	((fun () ->
-	    __CheckArgumentsFun = fun(Arguments) -> no____mock end,
-	    case (eunit_mock:assert_called(Fun, Times, __CheckArgumentsFun, ?MODULE, ?LINE)) of
-		ok -> ok;
-		__V -> .erlang:error({assertCalled_failed,
-				      [{module, ?MODULE},
-				       {line, ?LINE},
-				       {function, (??Fun)},
-				       {arguments, (??Arguments)},
-				       {value, __V}]})
-	    end
-	  end)())).
--endif.
--define(_assertCalledWith(Fun, Times, Arguments), ?_test(?assertCalledWith(Fun, Times, Arguments))).
+-define(once, 1, __Options__ = [).
+-define(twice, 2, __Options__ = [).
+-define(atLeastOnce, at_least_once, __Options__ = [).
+-define(times, , __Options__ = [).
+-define(with(Args),{with, fun(Args) -> did___match end, ??Args},).
+-define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> did___match end, ??ExpectedResult},).
+-define(andReturn(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
 
--define(foo(Term),(fun() -> Fun = fun(Term) -> ok end end)()).
+-define(assertCalledWith(Fun, Times, Arguments), ?_test(?assertCalledWith(Fun, Times, Arguments))).
 -define(assertCalledWithAndReturns(Fun, Times, Arguments, ReturnValue), ok).
 -define(assertCalledWithAndShouldReturn(Fun, Times, Arguments, ReturnValue), ok).
 -define(assertCalledAndShouldReturn(Fun, Times, ReturnValue), ok).
 
--define(with(Args),{with, fun(Args) -> no____mock end}).
--define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> no____mock end}).
--define(andReturn(ReturnValue),{andReturn, ReturnValue}).
--define(once, once).
--define(twice, twice).
 
-
--define(assertCalled_(Fun, Requirements),
-	((fun () ->
-	  Times = Requirements options_end],
-	  eunit_mock:assert_called_(Fun, Times, Options, ?MODULE, ?LINE)
-	  end)())).
-
--define(once_, 1, Options = [).
--define(twice_, 2, Options = [).
--define(times_, , Options = [).
--define(with_(Args),{with, fun(Args) -> no____mock end, ??Args},).
--define(andShouldReturn_(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> no____mock end, ??ExpectedResult},).
--define(andReturn_(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
 
 %% Macros for running operating system commands. (Note that these
 %% require EUnit to be present at runtime, or at least eunit_lib.)

@@ -109,9 +109,9 @@ set_stub_test() ->
   ?assertMatch([NewStub3, NewStub2, NewStub1, Stub1, Stub2, Stub3], set_stub(NewStub3, set_stub(NewStub2, set_stub(NewStub1, Stubs)))).
 
 get_assertions_and_reset_test() ->
-  _Assertions = [Assertion1 = #assert_call {required_call_count = ignore,  current_call_count = 0, expected = ignore, location = {my_test, 1}},  
-                 Assertion2 = #assert_call {required_call_count = 2,  current_call_count = 1, expected = {args, [a,b]}, location = {my_test, 2}},   
-                 Assertion3 = #assert_call {required_call_count = 1,  current_call_count = 0, expected = {return, foo}, location = {my_test, 3}}],  
+  _Assertions = [Assertion1 = #assert_call {required_call_count = at_least_once,  current_call_count = 0, location = {my_test, 1}},  
+                 Assertion2 = #assert_call {required_call_count = 2,  current_call_count = 1, location = {my_test, 2}},   
+                 Assertion3 = #assert_call {required_call_count = 1,  current_call_count = 0, location = {my_test, 3}}],  
   Stubs = [ Stub1 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0, returns = 0, assertions = [Assertion1, Assertion2]},  
            _Stub2 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_one,  arity = 1, returns = fun(_Arg) -> 1 end, assertions = []},   
             Stub3 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_two,  arity = 2, returns = 2, assertions = [Assertion3]}],  
@@ -140,32 +140,32 @@ eunit_test_should_succeed_test() ->
 mocked_module_should_be_recompiled_with_mock_parse_transform_test() ->  
   ?assertCompiledNoStub(mock_dummy),
   ?assertMatch(false, is_mocked(mock_dummy)),
-  ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Times = 1, ignore),
+  ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0, ?once),
   ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
 assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, ignore),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_once_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = once, ignore),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_one_times_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Args = {args, [1]}),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_any_times_once_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = ignore, _Args = {args, [1]}),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?atLeastOnce ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_any_times_more_calls_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = ignore, _Args = {args, [1]}),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?atLeastOnce ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(2)),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
@@ -173,14 +173,14 @@ assert_called_any_times_more_calls_test() ->
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_once_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, ignore)
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_twice_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 2, ignore),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?twice),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -188,7 +188,7 @@ assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_twi
 assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Arguments = {args, [foo]}),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -196,7 +196,7 @@ assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() ->
 assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Stub = fun(Arg) -> Arg + 1000 end),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(Arg) -> Arg + 1000 end)),
     ?assertMatch(1111, mock_dummy:fun_with_arity_one(111))
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -205,7 +205,7 @@ assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() ->
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_once_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Arguments = {args, [foo]}),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -213,7 +213,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_on
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_twice_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 2, _Arguments ={args, [foo]}),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?twice ?with([foo])),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -221,7 +221,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_tw
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, _Arguments = {args, [foo]}),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -229,7 +229,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_a
 assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, fun(_Arg = foo) -> ok end),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     % stubbed fun should not be invoked here, because stub fun args will not match
     ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(bar)) 
   end,
@@ -238,7 +238,7 @@ assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -
 assert_called_should_succedd_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, _Times = 1, fun(_Arg = foo) -> ok end),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     ?assertMatch(ok, mock_dummy:fun_with_arity_one(foo)) 
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -248,40 +248,40 @@ assert_called_should_succedd_for_stubbed_fun_and_expected_arguments_in_fun_test(
 %% tests for mocked gen_server
 %%----------------------------------------------------
 
-foo_test() ->
-  ?foo({add, _, _}).
-
-mock_gen_server_test() ->
-  Pid = ?stub(gen_server, _HandleCallFun = fun(_Event = {add, A, B}) -> A + B end),
-  ?assertCalled(Pid, _Times = once, {args, {add, 1, 9}}),
-  ?assertCalledWith(Pid, _Times = once, {add, _, _}),
-  ?assertCalledWithAndReturns(Pid, _Times = once, {add, _, _}, _Return = ok),
-  ?assertCalledWithAndShouldReturn(Pid, _Times = once, {store_value, _, _}, _ShouldReturn = true),
-  ?assertCalledAndShouldReturn(Pid, _Times = once, _ShouldReturn = true),
-  ?assertCalled(Pid, ?once,  [{with, [10, 1]}, {shouldReturn, 11}]),
-  ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), {andShouldReturn, 11}]),
-  ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), ?andShouldReturn({stored, _UpdatedValue})]),
-  ?assertCalled(Pid, ?twice, [?with({store_value, _, _}), ?andReturn(ok)]),
-  ?assertCalled(Pid, _Times = once, [args]),
-  ?assertCalled(Pid, _Times = once, {returns, 10}),
-  ?assertCalled(Pid, _Times = once, {should_return, 10}).
-  
-
-new_mock_test() ->
-  Pid = self(),
-  ?assertCalled_(Pid, ?once_),
-  ?assertCalled_(Pid, ?once_ ?with_({store_value, _, _})),
-  ?assertCalled_(Pid, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
-  ?assertCalled_(Pid, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
-
-  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_),
-  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_ ?with_({store_value, _, _})),
-  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
-  ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
-    
-  ?assertCalled_(gen_server_dummy, ?once_ ?with_({store_value, _, _})),
-  ?assertCalled_(gen_server_dummy, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
-  ?assertCalled_(gen_server_dummy, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)).
+% foo_test() ->
+%   ?foo({add, _, _}).
+% 
+% mock_gen_server_test() ->
+%   Pid = ?stub(gen_server, _HandleCallFun = fun(_Event = {add, A, B}) -> A + B end),
+%   ?assertCalled(Pid, _Times = once, {args, {add, 1, 9}}),
+%   ?assertCalledWith(Pid, _Times = once, {add, _, _}),
+%   ?assertCalledWithAndReturns(Pid, _Times = once, {add, _, _}, _Return = ok),
+%   ?assertCalledWithAndShouldReturn(Pid, _Times = once, {store_value, _, _}, _ShouldReturn = true),
+%   ?assertCalledAndShouldReturn(Pid, _Times = once, _ShouldReturn = true),
+%   ?assertCalled(Pid, ?once,  [{with, [10, 1]}, {shouldReturn, 11}]),
+%   ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), {andShouldReturn, 11}]),
+%   ?assertCalled(Pid, ?once,  [?with({store_value, _, _}), ?andShouldReturn({stored, _UpdatedValue})]),
+%   ?assertCalled(Pid, ?twice, [?with({store_value, _, _}), ?andReturn(ok)]),
+%   ?assertCalled(Pid, _Times = once, [args]),
+%   ?assertCalled(Pid, _Times = once, {returns, 10}),
+%   ?assertCalled(Pid, _Times = once, {should_return, 10}).
+%   
+% 
+% new_mock_test() ->
+%   Pid = self(),
+%   ?assertCalled_(Pid, ?once_),
+%   ?assertCalled_(Pid, ?once_ ?with_({store_value, _, _})),
+%   ?assertCalled_(Pid, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+%   ?assertCalled_(Pid, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
+% 
+%   ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_),
+%   ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?once_ ?with_({store_value, _, _})),
+%   ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+%   ?assertCalled_(fun mock_dummy:fun_with_arity_one/1, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)),
+%     
+%   ?assertCalled_(gen_server_dummy, ?once_ ?with_({store_value, _, _})),
+%   ?assertCalled_(gen_server_dummy, ?twice_ ?with_({store_value, _, _}) ?andShouldReturn_({stored, _UpdatedValue})),
+%   ?assertCalled_(gen_server_dummy, 3 ?times_ ?with_({store_value, _, _}) ?andReturn_(ok)).
 
   
 % bar_test() ->   
