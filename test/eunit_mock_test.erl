@@ -235,7 +235,7 @@ assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
-assert_called_should_succedd_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
+assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(_Arg = foo) -> ok end)),
@@ -243,6 +243,35 @@ assert_called_should_succedd_for_stubbed_fun_and_expected_arguments_in_fun_test(
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
+assert_called_should_succeed_for_mocked_local_gen_server_test() ->
+  TestFun = fun() ->
+    ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    gen_server:call(storage, {save_record, foo})
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
+
+assert_called_should_succeed_for_mocked_global_gen_server_test() ->
+  TestFun = fun() ->
+    ?assertCalled({global, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    gen_server:call({global, storage}, {save_record, foo})
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
+
+assert_called_should_succeed_for_mocked_gen_server_pid_test() ->
+  TestFun = fun() ->
+    Pid = ?mock(mock_gen_server_dummy, start, []),
+    ?assertCalled(Pid, ?once ?with({save_record, _}) ?andReturn(ok)),
+    gen_server:call(storage, {save_record, foo})
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
+
+assert_called_should_succeed_for_mocked_gen_server_with_existing_pid_test() ->
+  TestFun = fun() ->
+    Pid = mock_gen_server_dummy:start(),
+    ?assertCalled({mock_gen_server_dummy, Pid}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    gen_server:call(storage, {save_record, foo})
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
 
 %%----------------------------------------------------
 %% tests for mocked gen_server

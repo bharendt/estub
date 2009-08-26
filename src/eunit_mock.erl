@@ -67,14 +67,15 @@
 -author(bharendt).
 
 -export([parse_transform/2]).
--export([execute__mock__/5]).
+-export([execute__mock__/2, execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
 -export([stub/2, assert_called/5, check_assertions/0]).
 
 %% the current state of the mock server
 -record(state, {
-    stubs = []
+    stubs = [],
+    gen_server_stubs = []
   }).
 
 %% record holding information about stubbed function
@@ -86,6 +87,14 @@
                       %%    be returned instead of the real function. ignore is only valid when
                       %% assertions are set.
     assertions = []   %% [#assert_call{}]: the assertions that were made for this function
+  }).
+
+-record(gen_server_stub, {
+    pid,              %% pid(): the process id of the mocked gen_server 
+    returns = ignore, %% fun() | term() | ignore: either a function or a fixed return value that should
+                      %%    be returned by the mocked gen_server handle_call fun. ignore is only valid when
+                      %% assertions are set.
+    assertions = []   %% [#assert_call{}]: the assertions that were made for this gen_server
   }).
 
 %% record holding information about for an ?assertCall assertion
@@ -140,7 +149,7 @@ stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
 %% macro to be able to identify the assertion when it failed.
 %% @spec assert_called(Mock::mock(), Times::times(), Options::expected(), MODULE::atom(), LINE::int()) -> ok | {error, Reason} 
 %%  where
-%%    mock() = fun() | pid() | mockable_module(),
+%%    mock() = fun() | pid() | {local, mockable_module()} | {global, mockable_module()},
 %%    mockable_module() = gen_server_module() | gen_fsm_module(),
 %%    gen_server_module() = atom(),
 %%    gen_fsm_module = atom(),
@@ -150,31 +159,46 @@ stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
 %%    match() = fun() | term(),
 %%    return() = fun() | term(),
 %%    arguments() = [term()]
-assert_called(Mock, Times, Options, MODULE, LINE) when (is_function(Mock) orelse is_pid(Mock) orelse is_atom(Mock)), 
+assert_called({GlobalOrLocal, GenServerModuleName}, Times, Options, MODULE, LINE) when is_atom(GenServerModuleName), 
+                                                       (GlobalOrLocal == global orelse GlobalOrLocal == local),
+                                                       (is_integer(Times) orelse Times == at_least_once),
+                                                       is_list(Options) ->
+  case 
+    case global:whereis_name(GenServerModuleName) of
+      undefined ->
+        gen_server:start({global, GenServerModuleName}, eunit_mocked_gen_server, [GenServerModuleName], []);
+      ExistingPid ->
+        {ok, ExistingPid}                                                       
+    end 
+  of
+    {ok, Pid} -> 
+      add_assert_call({gen_server, GlobalOrLocal, Pid}, create_assertion(Times, Options, _Arity = 1), MODULE, LINE);
+    Error -> Error
+  end;
+assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock), 
                                                        (is_integer(Times) orelse Times == at_least_once),
                                                        is_list(Options) -> 
-  if is_function(Mock) ->
-    case fun_to_stub_record(Mock) of 
-      _Error = {error, Error} -> Error;
-      Stub = #stub{module_name = ModuleName, arity = Arity} ->
-        WasCompiledWithMocking = case is_mocked(ModuleName) of
-          false -> recompile_for_mocking(ModuleName);
-          true -> ok
-        end,
-        case WasCompiledWithMocking of
-          ok ->
-            case create_assertion(Times, Options, Arity) of
-              Assertion = #assert_call{} ->
-                add_assert_call(Stub, Assertion, MODULE, LINE);
-              Error -> Error
-            end;
-          Error -> Error
-        end
-    end;
-  true -> % Mock is gen_server- or gen_fsm- module or pid
-    ok
+  case fun_to_stub_record(Mock) of 
+    _Error = {error, Error} -> Error;
+    Stub = #stub{module_name = ModuleName, arity = Arity} ->
+      WasCompiledWithMocking = case is_mocked(ModuleName) of
+        false -> recompile_for_mocking(ModuleName);
+        true -> ok
+      end,
+      case WasCompiledWithMocking of
+        ok ->
+          case create_assertion(Times, Options, Arity) of
+            Assertion = #assert_call{} ->
+              add_assert_call(Stub, Assertion, MODULE, LINE);
+            Error -> Error
+          end;
+        Error -> Error
+      end
   end.
 
+execute__mock__(Arguments, GenServerPid) -> 
+  no____mock.
+  
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
   io:format("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
   case get_stub(ModuleName, FunctionName, Arity) of 
@@ -206,8 +230,11 @@ set_stub(Stub = #stub{}) ->
 get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   call_mock_server({get_stub, ModuleName, FunName, Arity}).
 
-add_assert_call(Stub = #stub {}, Assertion, MODULE, LINE) ->
+add_assert_call(Stub = #stub{}, Assertion, MODULE, LINE) ->
+  cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}});
+add_assert_call(Stub = {gen_server, GlobalOrLocal, Pid}, Assertion, MODULE, LINE) ->
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}}).
+
 
 check_assertions() ->
   case global:whereis_name(?MODULE) of
@@ -240,6 +267,21 @@ handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = 
       }
   end,
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
+
+handle_cast({add_assert_call, Stub = {gen_server, GlobalOrLocal, Pid}, Assertion = #assert_call{}}, State = #state { gen_server_stubs = Stubs}) ->
+  NewStub = case find_gen_server_stub(Pid, Stubs) of 
+    {value, ExistingStub = #gen_server_stub {assertions = ExistingAssertions}} ->
+      ExistingStub#gen_server_stub {
+        assertions = set_assertion(Assertion, ExistingAssertions)
+      };
+    false -> 
+      #gen_server_stub {
+        pid = Pid,
+        assertions = set_assertion(Assertion, [])
+      }
+  end,
+  {noreply, State#state {gen_server_stubs = set_stub(NewStub, Stubs)}};
+
 
 handle_cast({set_stub, NewStub = #stub{}}, State = #state { stubs = Stubs}) ->
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
@@ -312,6 +354,13 @@ fun_to_stub_record(Fun) when is_function(Fun) ->
       #stub { module_name = ModuleName, fun_name = FunName, arity = Arity}
   end.
 
+find_gen_server_stub(Pid, _Stubs = []) when is_pid(Pid)->
+  false;
+find_gen_server_stub(Pid, _Stubs = [Stub = #gen_server_stub{ pid = ExistingPid} | _]) when is_pid(Pid), Pid == ExistingPid ->
+  {value, ExistingPid};
+find_gen_server_stub(Pid, _Stubs = [#gen_server_stub{} | Rest]) when is_pid(Pid)->
+  find_gen_server_stub(Pid, Rest).
+
 find_stub(ModuleName, FunName, Arity, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   false;
 find_stub(ModuleName, FunName, Arity, _Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A} | _]) when ModuleName == M, FunName == F, Arity == A,
@@ -321,15 +370,25 @@ find_stub(ModuleName, FunName, Arity, _Stubs = [#stub{ } | Rest]) when is_atom(M
   find_stub(ModuleName, FunName, Arity, Rest).
   
 set_stub(NewStub = #stub {}, Stubs) when is_list(Stubs) ->
+  set_stub(NewStub, Stubs, []);
+set_stub(NewStub = #gen_server_stub {}, Stubs) when is_list(Stubs) ->
   set_stub(NewStub, Stubs, []).
   
 set_stub(NewStub = #stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
   [NewStub | lists:reverse(CheckStubs)];
+set_stub(NewStub = #gen_server_stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
+  [NewStub | lists:reverse(CheckStubs)];
 set_stub(NewStub = #stub {module_name = N1, fun_name = F1, arity = A1}, _Stubs = [#stub{module_name = N2, fun_name = F2, arity = A2}|Rest], CheckStubs ) 
                                         when is_list(CheckStubs), N1 == N2, F1 == F2, A1 == A2 -> 
   lists:reverse(CheckStubs) ++ [NewStub | Rest];
+set_stub(NewStub = #gen_server_stub {pid = Pid1}, _Stubs = [#gen_server_stub{pid = Pid2}|Rest], CheckStubs ) 
+                                        when is_list(CheckStubs), Pid1 == Pid2 -> 
+  lists:reverse(CheckStubs) ++ [NewStub | Rest];
 set_stub(NewStub = #stub {}, _Stubs = [Stub = #stub{}|Rest], CheckStubs) when is_list(CheckStubs) -> 
+  set_stub(NewStub, Rest, [Stub | CheckStubs]);
+set_stub(NewStub = #gen_server_stub {}, _Stubs = [Stub = #gen_server_stub{}|Rest], CheckStubs) when is_list(CheckStubs) -> 
   set_stub(NewStub, Rest, [Stub | CheckStubs]).
+
 
 set_assertion(Assertion = #assert_call{}, Assertions) when is_list(Assertions) ->
   [Assertion | Assertions].

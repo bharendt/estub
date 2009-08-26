@@ -374,6 +374,7 @@
 -define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> did___match end, ??ExpectedResult},).
 -define(andReturn(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
 
+-define(mock(GenServerModule, GenServerStartFun, GenServerStartFunArgs),ok).
 -define(assertCalledWith(Fun, Times, Arguments), ?_test(?assertCalledWith(Fun, Times, Arguments))).
 -define(assertCalledWithAndReturns(Fun, Times, Arguments, ReturnValue), ok).
 -define(assertCalledWithAndShouldReturn(Fun, Times, Arguments, ReturnValue), ok).
