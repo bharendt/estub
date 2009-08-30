@@ -67,10 +67,16 @@
 -author(bharendt).
 
 -export([parse_transform/2]).
--export([execute__mock__/2, execute__mock__/5]).
+-export([execute__mock__/3, execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
 -export([stub/2, assert_called/5, check_assertions/0]).
+
+-ifdef(TRACE).
+-define(trace, io:format).
+-else.
+-define(trace, no_trace).
+-endif.
 
 %% the current state of the mock server
 -record(state, {
@@ -91,6 +97,7 @@
 
 -record(gen_server_stub, {
     pid,              %% pid(): the process id of the mocked gen_server 
+    type,             %% call | cast: the type of the expected event
     returns = ignore, %% fun() | term() | ignore: either a function or a fixed return value that should
                       %%    be returned by the mocked gen_server handle_call fun. ignore is only valid when
                       %% assertions are set.
@@ -164,15 +171,20 @@ assert_called({GlobalOrLocal, GenServerModuleName}, Times, Options, MODULE, LINE
                                                        (is_integer(Times) orelse Times == at_least_once),
                                                        is_list(Options) ->
   case 
-    case global:whereis_name(GenServerModuleName) of
+    case
+      case GlobalOrLocal of
+        global -> global:whereis_name(GenServerModuleName); 
+        local  -> whereis(GenServerModuleName)
+      end
+    of
       undefined ->
-        gen_server:start({global, GenServerModuleName}, eunit_mocked_gen_server, [GenServerModuleName], []);
+        gen_server:start({GlobalOrLocal, GenServerModuleName}, eunit_mocked_gen_server, [GenServerModuleName], []);
       ExistingPid ->
         {ok, ExistingPid}                                                       
     end 
   of
     {ok, Pid} -> 
-      add_assert_call({gen_server, GlobalOrLocal, Pid}, create_assertion(Times, Options, _Arity = 1), MODULE, LINE);
+      add_assert_call({gen_server, GlobalOrLocal, Pid, _Type = call}, create_assertion(Times, Options, _Arity = 1), MODULE, LINE);
     Error -> Error
   end;
 assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock), 
@@ -196,11 +208,28 @@ assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock),
       end
   end.
 
-execute__mock__(Arguments, GenServerPid) -> 
+execute__mock__(Arguments, GenServerPid, Type = call) when is_pid(GenServerPid) -> 
+  case get_stub(GenServerPid, Type) of
+    false ->
+      no____mock;
+    {value, Stub = #gen_server_stub {assertions = Assertions = [_|_], returns = StubReturnValue}} -> 
+      {ReturnValue, NewAssertions, AssertionMatched} = update_assertions(Assertions, _Arity = 1, Arguments),
+      % only update assertion if a assertion matched
+      if AssertionMatched -> set_stub(Stub#gen_server_stub { assertions = NewAssertions}); true -> ok end,
+      case ReturnValue of
+        % if assertion had no won stub value, return the value from a previous stub (if exist)
+        ignore -> return_mock_result(StubReturnValue, _ModuleName = gen_server, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid);
+        % otherwise return value from assertion with stub
+        _ -> return_mock_result(ReturnValue, _ModuleName = gen_server, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid)
+      end;
+    {value, _Stub = #gen_server_stub {returns = StubbedReturn}} ->
+      return_mock_result(StubbedReturn, _ModuleName = gen_server_stub, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid)    
+  end;
+execute__mock__(_Arguments, GenServerPid, _Type = cast) when is_pid(GenServerPid) -> 
   no____mock.
   
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
-  io:format("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
+  ?trace("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
   case get_stub(ModuleName, FunctionName, Arity) of 
     false ->
       no____mock;
@@ -225,14 +254,18 @@ execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) ->
 %%----------------------------------------------------
 
 set_stub(Stub = #stub{}) ->
+  cast_to_mock_server({set_stub, Stub});
+set_stub(Stub = #gen_server_stub{}) ->
   cast_to_mock_server({set_stub, Stub}).
 
+get_stub(GenServerPid, Type) when is_pid(GenServerPid), is_atom(Type) ->
+  call_mock_server({get_stub, GenServerPid, Type}).
 get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   call_mock_server({get_stub, ModuleName, FunName, Arity}).
 
 add_assert_call(Stub = #stub{}, Assertion, MODULE, LINE) ->
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}});
-add_assert_call(Stub = {gen_server, GlobalOrLocal, Pid}, Assertion, MODULE, LINE) ->
+add_assert_call(Stub = {gen_server, _GlobalOrLocal, _Pid, _CallOrCast}, Assertion, MODULE, LINE) ->
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}}).
 
 
@@ -242,7 +275,7 @@ check_assertions() ->
     Pid -> 
       case gen_server:call(Pid, {get_assertions_and_reset, global}) of
         [] -> ok; % no assertions were made
-        [#stub{}|_] = Stubs -> check_assertions(Stubs, ok)          
+        [_|_] = Stubs -> check_assertions(Stubs, ok)          
       end
   end.
 
@@ -268,8 +301,8 @@ handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = 
   end,
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
 
-handle_cast({add_assert_call, Stub = {gen_server, GlobalOrLocal, Pid}, Assertion = #assert_call{}}, State = #state { gen_server_stubs = Stubs}) ->
-  NewStub = case find_gen_server_stub(Pid, Stubs) of 
+handle_cast({add_assert_call, _Stub = {gen_server, _GlobalOrLocal, Pid, CallOrCast}, Assertion = #assert_call{}}, State = #state { gen_server_stubs = Stubs}) ->
+  NewStub = case find_gen_server_stub(Pid, CallOrCast, Stubs) of 
     {value, ExistingStub = #gen_server_stub {assertions = ExistingAssertions}} ->
       ExistingStub#gen_server_stub {
         assertions = set_assertion(Assertion, ExistingAssertions)
@@ -277,6 +310,7 @@ handle_cast({add_assert_call, Stub = {gen_server, GlobalOrLocal, Pid}, Assertion
     false -> 
       #gen_server_stub {
         pid = Pid,
+        type = CallOrCast,
         assertions = set_assertion(Assertion, [])
       }
   end,
@@ -285,6 +319,9 @@ handle_cast({add_assert_call, Stub = {gen_server, GlobalOrLocal, Pid}, Assertion
 
 handle_cast({set_stub, NewStub = #stub{}}, State = #state { stubs = Stubs}) ->
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
+
+handle_cast({set_stub, NewStub = #gen_server_stub{}}, State = #state { gen_server_stubs = Stubs}) ->
+  {noreply, State#state {gen_server_stubs = set_stub(NewStub, Stubs)}};
   
 handle_cast(Event, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
@@ -296,15 +333,19 @@ handle_cast(Event, State) ->
 handle_call({get_stub, ModuleName, FunName, Arity}, _From, State = #state{stubs = Stubs}) ->
   {reply, find_stub(ModuleName, FunName, Arity, Stubs), State};
 
+handle_call({get_stub, GenServerPid, Type}, _From, State = #state{ gen_server_stubs = Stubs}) ->
+  {reply, find_gen_server_stub(GenServerPid, Type, Stubs), State};
+
 % gets all stubs with assertions and then deletes all local stubs (that were added for one test) 
 handle_call({get_assertions_and_reset, local}, _From, State) ->
   % TODO: implement. (currently local does the same as global)
   handle_call({get_assertions_and_reset, global}, _From, State);
 
 % gets all stubs with assertions and then deletes all stubs 
-handle_call({get_assertions_and_reset, global}, _From, State = #state{stubs = Stubs}) ->
-  StubsWithAssertions = [Stub || Stub = #stub{assertions = Assertions} <- Stubs, Assertions /= []],
-  {reply, StubsWithAssertions, State#state {stubs = []}};
+handle_call({get_assertions_and_reset, global}, _From, State = #state{stubs = FunStubs, gen_server_stubs = GenServerStubs}) ->
+  FunStubsWithAssertions = [Stub || Stub = #stub{assertions = Assertions} <- FunStubs, Assertions /= []],
+  GenServerStubsWithAssertions = [Stub || Stub = #gen_server_stub{assertions = Assertions} <- GenServerStubs, Assertions /= []],
+  {reply, FunStubsWithAssertions ++ GenServerStubsWithAssertions, State#state {stubs = [], gen_server_stubs = []}};
 
 handle_call(Event, _From, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
@@ -316,7 +357,7 @@ terminate(_Reason, _State) ->
   ok.
 
 code_change(_OldVsn, Data, _Extra) ->
- io:format("\t   received code change event in tcp server ~n"),
+ ?trace("\t   received code change event in tcp server ~n"),
  {ok, Data}.  
 
 handle_info(Event, Data) ->
@@ -354,12 +395,12 @@ fun_to_stub_record(Fun) when is_function(Fun) ->
       #stub { module_name = ModuleName, fun_name = FunName, arity = Arity}
   end.
 
-find_gen_server_stub(Pid, _Stubs = []) when is_pid(Pid)->
+find_gen_server_stub(Pid, Type, _Stubs = []) when is_pid(Pid), is_atom(Type) ->
   false;
-find_gen_server_stub(Pid, _Stubs = [Stub = #gen_server_stub{ pid = ExistingPid} | _]) when is_pid(Pid), Pid == ExistingPid ->
-  {value, ExistingPid};
-find_gen_server_stub(Pid, _Stubs = [#gen_server_stub{} | Rest]) when is_pid(Pid)->
-  find_gen_server_stub(Pid, Rest).
+find_gen_server_stub(Pid, Type, _Stubs = [Stub = #gen_server_stub{ pid = ExistingPid, type = ExistingType} | _]) when is_pid(Pid), is_atom(Type), Pid == ExistingPid, Type == ExistingType ->
+  {value, Stub};
+find_gen_server_stub(Pid, Type, _Stubs = [#gen_server_stub{} | Rest]) when is_pid(Pid), is_atom(Type) ->
+  find_gen_server_stub(Pid, Type, Rest).
 
 find_stub(ModuleName, FunName, Arity, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
   false;
@@ -460,7 +501,7 @@ recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
 
 checkMatch({_, Fun, _}, Found) when is_function(Fun) ->
   case catch Fun(Found) of
-    {'EXIT', _E} -> io:format("ERROR: ~p~n", [_E]), false;
+    {'EXIT', _E} -> ?trace("ERROR: ~p~n", [_E]), false;
     did___match -> true;
     FunResult -> FunResult
   end;
@@ -481,21 +522,22 @@ update_assertions([], _Arity, _Arguments, ReturnValue, UpdatedAssertions, Assert
 
 update_assertions([Assertion = #assert_call{ expected_arguments = ExpectedArguments, expected_return = ExpectedReturn, returns = Returns} | Rest], Arity, Arguments, ReturnValue, UpdatedAssertions, AssertionsMatched) ->
   Expected = checkMatch(ExpectedArguments, Arguments) andalso checkMatch(ExpectedReturn, Arguments),
-  io:format("Expected = ~p~n", [Expected]),
-  io:format("ExpectedArguments = ~p~n", [ExpectedArguments]),
-  io:format("ExpectedReturn = ~p~n", [ExpectedReturn]),
-  io:format("Arguments = ~p~n", [Arguments]),
-  io:format("checkMatch(ExpectedArguments, Arguments) = ~p~n", [checkMatch(ExpectedArguments, Arguments)]),
-  io:format("checkMatch(ExpectedReturn, Arguments) = ~p~n", [checkMatch(ExpectedReturn, Arguments)]),
+  ?trace("Expected = ~p~n", [Expected]),
+  ?trace("ExpectedArguments = ~p~n", [ExpectedArguments]),
+  ?trace("ExpectedReturn = ~p~n", [ExpectedReturn]),
+  ?trace("Arguments = ~p~n", [Arguments]),
+  ?trace("checkMatch(ExpectedArguments, Arguments) = ~p~n", [checkMatch(ExpectedArguments, Arguments)]),
+  ?trace("checkMatch(ExpectedReturn, Arguments) = ~p~n", [checkMatch(ExpectedReturn, Arguments)]),
   {NewReturn, ReturnFunMatched} = case Returns of
-    _ when ReturnValue /= ignore -> {ReturnValue, true}; % keep first (= more recent) return value
-    undefined -> {ReturnValue, true};
-    {andReturn, ReturnFun, _} when is_function(ReturnFun, Arity) ->
-      case catch erlang:apply(ReturnFun, Arguments) of
-        {'EXIT', _} -> {ReturnValue, false};
-        ExecResult -> {ExecResult, true}
+    _ when ReturnValue /= ignore -> ?trace("using old return value ~w~n", [ReturnValue]), {ReturnValue, true}; % keep first (= more recent) return value
+    undefined -> ?trace("no return value specified ~n"), {ReturnValue, true};
+    {andReturn, ReturnFun, _F} when is_function(ReturnFun, Arity) ->
+      ?trace("returning value from function ~s~n", [_F]),
+      case catch erlang:apply(ReturnFun, if is_list(Arguments) -> Arguments; true -> [Arguments] end) of
+        {'EXIT', _R} -> ?trace("shit exit~n Arguments = ~w, ReturnFun = ~w ~n reason = ~p~n", [Arguments, ReturnFun, _R]), {ReturnValue, false};
+        ExecResult -> ?trace("exec succeeded~n"), {ExecResult, true}
       end;
-    {andReturn, FixedReturnValue, _} -> FixedReturnValue
+    {andReturn, FixedReturnValue, _} -> ?trace("fixed return value~n"), {FixedReturnValue, true}
   end,
   {NewAssertion, NewAssertionsMatched} = if Expected andalso ReturnFunMatched -> 
     {Assertion#assert_call{current_call_count = Assertion#assert_call.current_call_count + 1}, true};
@@ -521,26 +563,42 @@ return_mock_result(Value, _ModuleName, _FunctionName, _Arity, _Arguments, _Self)
   
 check_assertions([], Acc) ->
   Acc;
+check_assertions([Stub = #gen_server_stub{ assertions = Assertions } | Rest], Acc) ->
+  NewAcc = check_assertions(Stub, Assertions, Acc),
+  check_assertions(Rest, NewAcc);
 check_assertions([Stub = #stub{ assertions = Assertions } | Rest], Acc) ->
   NewAcc = check_assertions(Stub, Assertions, Acc),
   check_assertions(Rest, NewAcc).
   
-check_assertions(_Stub = #stub{}, [], Acc) ->
+check_assertions(_Stub, [], Acc) ->
   Acc;
-check_assertions(Stub = #stub{}, [#assert_call{ required_call_count = at_least_once, current_call_count = Current} | Rest], _Acc) when Current > 0 ->
+check_assertions(Stub, [#assert_call{ required_call_count = at_least_once, current_call_count = Current} | Rest], _Acc) when Current > 0 ->
   check_assertions(Stub, Rest, ok);
-check_assertions(Stub = #stub{}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required == Current ->
+check_assertions(Stub, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required == Current ->
   check_assertions(Stub, Rest, ok);
-check_assertions(Stub = #stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
-  .erlang:error({assertCalled, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))},
-                                {required, Required},
-                                {current, Current}]}),
+check_assertions(Stub, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
+  .erlang:error({assertCalled, [stub_error_info(Stub), {required, Required}, {current, Current}]}),
   check_assertions(Stub, Rest, error);
-check_assertions(Stub = #stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}, [UnknownAssertion | Rest], _Acc) ->
-  .erlang:error({unknown_assertion, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))},
-                                     {assertion, UnknownAssertion}]}),
+check_assertions(Stub, [UnknownAssertion | Rest], _Acc) ->
+  .erlang:error({unknown_assertion, [stub_error_info(Stub),{assertion, UnknownAssertion}]}),
   check_assertions(Stub, Rest, error).
-  
+ 
+stub_error_info(#stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}) -> 
+  {function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))};
+stub_error_info(#gen_server_stub{pid = Pid, type = Type}) -> 
+  Name = case process_info(Pid, registered_name) of
+    {registered_name, RegName} when is_atom(RegName) -> atom_to_list(RegName) ++ "/";
+    _ -> pid_to_list(Pid) ++ "/"
+  end,
+  Info = case Type of
+    call -> list_to_atom(Name ++ "handle_call");
+    cast -> list_to_atom(Name ++ "handle_cast")
+  end,
+  {gen_server, Info}.
+                                    
+no_trace(_) -> ok.
+no_trace(_, _) -> ok.
+ 
 %%----------------------------------------------------
 %% mocking parse transform
 %%----------------------------------------------------
@@ -593,7 +651,7 @@ form({attribute,Line,Attr,Val}, _Forms) ->		%The general attribute.
 form({function,Line,Name0,Arity0,Clauses0}, Forms) ->
     NewClauses = case Clauses0 of
       [{clause, LineNumber, Args, Guards, Content}] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
-        %io:format("mocking function ~w/~w~n", [Name0, Arity0]),
+        %?trace("mocking function ~w/~w~n", [Name0, Arity0]),
         ModuleName = get_module_name(Forms),
         transform_mock_fun(LineNumber, ModuleName, Name0, Args, Guards, Content);
       _ -> Clauses0
