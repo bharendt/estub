@@ -1,7 +1,7 @@
 -module(util).
 -author(bharendt).
 
--export([refresh/1, refresh/2, refresh_test/1]).
+-export([refresh/1, refresh/2, refresh_test/1, refresh_trace/1]).
 -export([test/1, test_module/1]).
 -export([parse/1, eval/1, is_process_alive/1]).
 
@@ -27,6 +27,9 @@ refresh(Module) when is_atom(Module) ->
   
 refresh_test(Module) ->
   refresh(Module, get_processes(Module), [{d,'TEST',true}, export_all]).
+
+refresh_trace(Module) ->
+  refresh(Module, get_processes(Module), [{d,'TEST',true}, {d, 'TRACE', true}, export_all]).
   
 refresh(Module, CompileOptions) ->
   refresh(Module, get_processes(Module), CompileOptions).
