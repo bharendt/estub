@@ -370,7 +370,13 @@
 -define(twice, 2, __Options__ = [).
 -define(atLeastOnce, at_least_once, __Options__ = [).
 -define(times, , __Options__ = [).
--define(with(Args),{with, fun(Args) -> did___match end, ??Args},).
+-define(with(Args),{with, fun(__Value__) -> % this check is done by calling this fun with the arguments, the stubbed fun was called with as array
+                              case __Value__ of 
+                                  Args -> did___match;
+                                  [Args] -> did___match; % if args are not given as array if fun is of arity one
+                                  _ -> did___not__match 
+                              end 
+                          end, ??Args},).
 -define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> did___match end, ??ExpectedResult},).
 -define(andReturn(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
 
