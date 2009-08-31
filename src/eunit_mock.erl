@@ -187,6 +187,23 @@ assert_called({GlobalOrLocal, GenServerModuleName}, Times, Options, MODULE, LINE
       add_assert_call({gen_server, GlobalOrLocal, Pid, _Type = call}, create_assertion(Times, Options, _Arity = 1), MODULE, LINE);
     Error -> Error
   end;
+assert_called({GenServerPid, GenServerModuleName}, Times, Options, MODULE, LINE) when is_atom(GenServerModuleName), 
+                                                       is_pid(GenServerPid),
+                                                       (is_integer(Times) orelse Times == at_least_once),
+                                                       is_list(Options) ->
+  WasCompiledWithMocking = case is_mocked(GenServerModuleName) of
+    false -> recompile_for_mocking(GenServerModuleName);
+    true -> ok
+  end,
+  case WasCompiledWithMocking of
+    ok ->
+      case create_assertion(Times, Options, _Arity = 3) of
+        Assertion = #assert_call{} ->
+          add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = handle_call, arity = 3} , Assertion, MODULE, LINE);
+        Error -> Error
+      end;
+    Error -> Error
+  end;
 assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock), 
                                                        (is_integer(Times) orelse Times == at_least_once),
                                                        is_list(Options) -> 
@@ -452,6 +469,8 @@ create_assertion(_Options = [options___end | Rest], Assertion = #assert_call{}, 
   create_assertion(Rest, Assertion, Arity);
 create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, Arity) when is_function(Fun, Arity) ->  
   create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, Arity);
+create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, Arity) when is_function(Fun, 1) ->  % ?with() macro creates fun of arity one
+  create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, Arity);
 create_assertion(_Options = [_Option = {with, Fun, _} | _Rest], _Assertion = #assert_call{}, _Arity) when is_function(Fun) ->  
   {error, wrong_arity};
 create_assertion(_Options = [Option = {with, Arguments, _} | Rest], Assertion = #assert_call{}, Arity) when is_list(Arguments), length(Arguments) == Arity ->  
@@ -503,6 +522,7 @@ checkMatch({_, Fun, _}, Found) when is_function(Fun) ->
   case catch Fun(Found) of
     {'EXIT', _E} -> ?trace("ERROR: ~p~n", [_E]), false;
     did___match -> true;
+    did___not__match -> false;
     FunResult -> FunResult
   end;
 checkMatch({_, Required, _}, Found) ->
@@ -650,11 +670,12 @@ form({attribute,Line,Attr,Val}, _Forms) ->		%The general attribute.
     {attribute,Line,Attr,Val};
 form({function,Line,Name0,Arity0,Clauses0}, Forms) ->
     NewClauses = case Clauses0 of
-      [{clause, LineNumber, Args, Guards, Content}] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
-        %?trace("mocking function ~w/~w~n", [Name0, Arity0]),
+      [{clause, LineNumber, Args, Guards, Content} | _] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
+        ?trace("mocking function ~w/~w~n", [Name0, Arity0]),
         ModuleName = get_module_name(Forms),
         transform_mock_fun(LineNumber, ModuleName, Name0, Args, Guards, Content);
-      _ -> Clauses0
+        % TODO: mocking also the other clauses from [... | _]
+      _ -> ?trace("not mocking function ~w/~w~n", [Name0, Arity0]), Clauses0
     end,
     {Name,Arity,Clauses} = function(Name0, Arity0, NewClauses),
     {function,Line,Name,Arity,Clauses};
