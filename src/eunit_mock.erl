@@ -572,7 +572,10 @@ return_mock_result(ignore, _ModuleName, _FunctionName, _Arity, _Arguments, _Self
 return_mock_result({return, Value}, ModuleName, FunctionName, Arity, Arguments, Self) -> 
   return_mock_result(Value, ModuleName, FunctionName, Arity, Arguments, Self);
 return_mock_result(Fun, _ModuleName, _FunctionName, Arity, Arguments, _Self) when is_function(Fun, Arity) -> 
-  erlang:apply(Fun, Arguments);
+  case catch erlang:apply(Fun, Arguments) of 
+    {'EXIT', _E} -> ?trace("error ~p~n", [_E]), no____mock; % if arguments of fun does not match, ignore mocking
+    ReturnValue -> ReturnValue
+  end;
 return_mock_result(Fun, ModuleName, FunctionName, Arity, _Arguments, _Self) when is_function(Fun) -> 
   .erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
                                              atom_to_list(FunctionName) ++ "/" ++ 
