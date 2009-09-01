@@ -334,10 +334,30 @@ assert_called_should_succeed_for_mocked_global_gen_server_test() ->
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
+%% TODO: check gen_server pid when executing mock, so that the following test fails:
+% should_fail_test() ->
+%   ?assertCompiledNoStub(gen_server_dummy),
+%   ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
+%   ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
+%   receive after 100 -> ok end,
+%   {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
+%   {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
+%   ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+%   ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+%   ?assertMatch(ok, gen_server:call(dummy1, {save_record, foo})),
+%   gen_server_dummy:stop(Pid).
+%%
+%% ... because dummy2 is not called
+
+%% TODO: ?andReturn(ok) should do the same as ?andReturn({reply, ok, foo}) if ?assertCalled is used with gen_server,
+%%       so add {reply, ReturnValue, State} automatically if not std gen_server return was specified.
+
 foo_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
+  ?assertMatch(ok, gen_server_dummy:stop(dummy)),
+  receive after 100 -> ok end,
   {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-  ?assertCalled({Pid, gen_server_dummy}, ?once ?with({save_record, _}) ?andReturn({reply, ok, foo})),
+  ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
   ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
   gen_server_dummy:stop(Pid).
 
@@ -345,12 +365,15 @@ foo_test() ->
 assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
+    ?assertMatch(ok, gen_server_dummy:stop(dummy)),
+    receive after 100 -> ok end,
     {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-    ?assertCalled({Pid, gen_server_dummy}, ?once ?with({save_record, _}) ?andReturn(ok)),
-    ?assertMatch(ok, gen_server:call({local, dummy}, {save_record, foo})),
+    ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
     gen_server_dummy:stop(Pid)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
+
 
 
 % assert_called_should_succeed_for_mocked_gen_server_pid_test() ->
