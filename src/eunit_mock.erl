@@ -670,11 +670,10 @@ form({attribute,Line,Attr,Val}, _Forms) ->		%The general attribute.
     {attribute,Line,Attr,Val};
 form({function,Line,Name0,Arity0,Clauses0}, Forms) ->
     NewClauses = case Clauses0 of
-      [{clause, LineNumber, Args, Guards, Content} | _] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
+      FunClauses = [{clause, LineNumber, Args, Guards, _Content} | _] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
         ?trace("mocking function ~w/~w~n", [Name0, Arity0]),
         ModuleName = get_module_name(Forms),
-        transform_mock_fun(LineNumber, ModuleName, Name0, Args, Guards, Content);
-        % TODO: mocking also the other clauses from [... | _]
+        [transform_mock_fun(CurLineNumber, ModuleName, Name0, CurArgs, CurGuards, CurContent) || {clause, CurLineNumber, CurArgs, CurGuards, CurContent} <- FunClauses];
       _ -> ?trace("not mocking function ~w/~w~n", [Name0, Arity0]), Clauses0
     end,
     {Name,Arity,Clauses} = function(Name0, Arity0, NewClauses),
@@ -693,7 +692,7 @@ get_module_name([{attribute,_Line,module,ModuleName} | _]) -> ModuleName;
 get_module_name([_ | Rest]) -> get_module_name(Rest).
 
 transform_mock_fun(LineNumber, ModuleName, FunName, Args, Guards, Content) when is_integer(LineNumber), is_list(Args), is_list(Guards) -> 
-  [{clause, LineNumber, transform_mock_args(Args, LineNumber), Guards, trasform_mock_content(Content, LineNumber, ModuleName, FunName, length(Args))}].
+  {clause, LineNumber, transform_mock_args(Args, LineNumber), Guards, trasform_mock_content(Content, LineNumber, ModuleName, FunName, length(Args))}.
 
 transform_mock_args(Args, LineNumber) when is_list(Args) ->
   element(1, lists:foldr(fun(Arg, {Mapped, Index}) -> 

@@ -61,6 +61,33 @@ stubbed_module_should_return_stubbed_value_from_fun_test() ->
   ?stub(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Return = fun() -> stubbed_value end),
   ?assertMatch(stubbed_value, mock_dummy:fun_with_arity_zero()).
 
+standart_module_with_different_clauses_should_return_normal_value__test() ->
+  ?assertCompiledNoStub(mock_dummy),
+  ?assertMatch(fun_with_differenct_clauses_1, mock_dummy:fun_with_differenct_clauses(1)),
+  ?assertMatch(fun_with_differenct_clauses_2, mock_dummy:fun_with_differenct_clauses(2)),
+  ?assertMatch(fun_with_differenct_clauses_3, mock_dummy:fun_with_differenct_clauses(3)).  
+
+stubbed_module_with_different_clauses_should_return_stubbed_value_from_fun_matching_argument_1_test() ->
+  ?stub(_Fun = fun mock_dummy:fun_with_differenct_clauses/1, _Return = fun(1) -> stubbed_value_1 end),
+  ?assertMatch(stubbed_value_1, mock_dummy:fun_with_differenct_clauses(1)),
+  ?assertMatch(fun_with_differenct_clauses_2, mock_dummy:fun_with_differenct_clauses(2)),
+  ?assertMatch(fun_with_differenct_clauses_3, mock_dummy:fun_with_differenct_clauses(3)).
+
+
+stubbed_module_with_different_clauses_should_return_stubbed_value_from_fun_matching_argument_2_test() ->
+  ?stub(_Fun = fun mock_dummy:fun_with_differenct_clauses/1, _Return = fun(2) -> stubbed_value_2 end),
+  ?assertMatch(fun_with_differenct_clauses_1, mock_dummy:fun_with_differenct_clauses(1)),
+  ?assertMatch(stubbed_value_2, mock_dummy:fun_with_differenct_clauses(2)),
+  ?assertMatch(fun_with_differenct_clauses_3, mock_dummy:fun_with_differenct_clauses(3)).
+
+  
+stubbed_module_with_different_clauses_should_return_stubbed_value_from_fun_test() ->
+  ?stub(_Fun = fun mock_dummy:fun_with_differenct_clauses/1, _Return = fun(_) -> stubbed_value end),
+  ?assertMatch(stubbed_value, mock_dummy:fun_with_differenct_clauses(1)),
+  ?assertMatch(stubbed_value, mock_dummy:fun_with_differenct_clauses(2)),
+  ?assertMatch(stubbed_value, mock_dummy:fun_with_differenct_clauses(3)).
+
+
 fun_to_stub_record_test() ->
   ?assertMatch(#stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0}, fun_to_stub_record(fun mock_dummy:fun_with_arity_zero/0)),
   ?assertMatch(#stub{ module_name = mock_dummy, fun_name = fun_with_arity_one, arity = 1}, fun_to_stub_record(fun mock_dummy:fun_with_arity_one/1)),
