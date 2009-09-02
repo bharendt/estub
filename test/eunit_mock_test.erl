@@ -381,9 +381,6 @@ assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
-%% TODO: ?andReturn(ok) should do the same as ?andReturn({reply, ok, foo}) if ?assertCalled is used with gen_server,
-%%       so add {reply, ReturnValue, State} automatically if not std gen_server return was specified.
-
 assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
@@ -395,6 +392,18 @@ assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
     gen_server_dummy:stop(Pid)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
+
+assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_server_return_test() ->
+  TestFun = fun() ->
+    ?assertMatch(ok, gen_server_dummy:stop(dummy)),
+    receive after 100 -> ok end,
+    {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
+    ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn(ok)),
+    ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
+    gen_server_dummy:stop(Pid)
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
+
 
 foo_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
@@ -411,16 +420,6 @@ foo_test() ->
   gen_server_dummy:stop(Pid1),
   check_assertions().
 
-
-
-% assert_called_should_succeed_for_mocked_gen_server_pid_test() ->
-%   TestFun = fun() ->
-%     Pid = ?mock(mock_gen_server_dummy, start, []),
-%     ?assertCalled(Pid, ?once ?with({save_record, _}) ?andReturn(ok)),
-%     gen_server:call(storage, {save_record, foo})
-%   end,
-%   ?assertMatch(ok, eunit:test(TestFun)).
-% 
 % assert_called_should_succeed_for_mocked_gen_server_with_existing_pid_test() ->
 %   TestFun = fun() ->
 %     Pid = mock_gen_server_dummy:start(),

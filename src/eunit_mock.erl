@@ -580,17 +580,33 @@ return_mock_result(ignore, _ModuleName, _FunctionName, _Arity, _Arguments, _Self
   no____mock;
 return_mock_result({return, Value}, ModuleName, FunctionName, Arity, Arguments, Self) -> 
   return_mock_result(Value, ModuleName, FunctionName, Arity, Arguments, Self);
-return_mock_result(Fun, _ModuleName, _FunctionName, Arity, Arguments, _Self) when is_function(Fun, Arity) -> 
+return_mock_result(Fun, ModuleName, FunctionName, Arity, Arguments, Self) when is_function(Fun, Arity) -> 
   case catch erlang:apply(Fun, Arguments) of 
     {'EXIT', _E} -> ?trace("error ~p~n", [_E]), no____mock; % if arguments of fun does not match, ignore mocking
-    ReturnValue -> ReturnValue
+    ReturnValue -> auto_complete_return_value(ReturnValue, ModuleName, FunctionName, Arguments, Arguments, Self)
   end;
 return_mock_result(Fun, ModuleName, FunctionName, Arity, _Arguments, _Self) when is_function(Fun) -> 
   .erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
                                              atom_to_list(FunctionName) ++ "/" ++ 
                                              integer_to_list(Arity))},
                                   {stub, Fun}]});
-return_mock_result(Value, _ModuleName, _FunctionName, _Arity, _Arguments, _Self) -> 
+return_mock_result(Value, ModuleName, FunctionName, Arity, Arguments, Self) -> 
+  auto_complete_return_value(Value, ModuleName, FunctionName, Arity, Arguments, Self).
+  
+
+auto_complete_return_value(Value = no____mock, _ModuleName, _FunctionName, _Arity, _Arguments, _Self) ->
+  Value;
+auto_complete_return_value(Value, _ModuleName, _FunctionName = handle_call, _Arity = 3, _Arguments = [_, _, State], _Self) ->
+  case Value of
+    {reply, _Reply, _NewState} -> Value;
+    {reply, _Reply, _NewState, _TimeoutOrHibernate} -> Value;
+    {noreply, _NewState} -> Value;
+    {noreply, _NewState, _TimeoutOrHibernate} -> Value;
+    {stop, _Reason, _Reply, _NewState} -> Value;
+    {stop, _Reason, _NewState} -> Value;
+    _ -> {reply, Value, State}
+  end;
+auto_complete_return_value(Value, _ModuleName, _FunctionName, _Arity, _Arguments, _Self) ->
   Value.
   
 check_assertions([], Acc) ->
