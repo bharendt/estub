@@ -32,14 +32,14 @@ handle_cast(Event, State) ->
                             {event, Event}]),
   {noreply, State}.
 
-handle_call(Event, _From, State = #state {mocked_module_name = ModuleName}) ->
-  case eunit_mock:execute__mock__(Event, self(), call) of
+handle_call(Event, From, State = #state {mocked_module_name = ModuleName}) ->
+  case eunit_mock:execute__mock__(?MODULE, handle_call, 3, [Event, From, State], self()) of
     no____mock ->
       error_logger:info_report([{message, 'received unhandled event in handle_call.'},
                                 {module, ModuleName}, {pid, self()}, {event, Event}]),
       {reply, error, State};
     Reply ->
-      {reply, Reply, State}
+      Reply
   end.
 
 terminate(_Reason, _State) ->

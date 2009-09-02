@@ -309,7 +309,7 @@ assert_called_should_succeed_for_mocked_gen_server_that_returns_fixed_value_test
   ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
   ?assert(is_pid(whereis(storage))),
   ?assertMatch(ok, gen_server:call(storage, {save_record, foo})).
-
+  
 
 assert_called_should_succeed_for_mocked_local_gen_server_test() ->
   TestFun = fun() ->
