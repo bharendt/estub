@@ -67,7 +67,7 @@
 -author(bharendt).
 
 -export([parse_transform/2]).
--export([execute__mock__/3, execute__mock__/5]).
+-export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
 -export([stub/2, assert_called/5, check_assertions/0]).
@@ -80,8 +80,7 @@
 
 %% the current state of the mock server
 -record(state, {
-    stubs = [],
-    gen_server_stubs = []
+    stubs = []
   }).
 
 %% record holding information about stubbed function
@@ -95,15 +94,6 @@
                       %%    be returned instead of the real function. ignore is only valid when
                       %% assertions are set.
     assertions = []   %% [#assert_call{}]: the assertions that were made for this function
-  }).
-
--record(gen_server_stub, {
-    pid,              %% pid(): the process id of the mocked gen_server 
-    type,             %% call | cast: the type of the expected event
-    returns = ignore, %% fun() | term() | ignore: either a function or a fixed return value that should
-                      %%    be returned by the mocked gen_server handle_call fun. ignore is only valid when
-                      %% assertions are set.
-    assertions = []   %% [#assert_call{}]: the assertions that were made for this gen_server
   }).
 
 %% record holding information about for an ?assertCall assertion
@@ -231,26 +221,6 @@ assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock),
       end
   end.
 
-execute__mock__(Arguments, GenServerPid, Type = call) when is_pid(GenServerPid) -> 
-  case get_stub(GenServerPid, Type) of
-    false ->
-      no____mock;
-    {value, Stub = #gen_server_stub {assertions = Assertions = [_|_], returns = StubReturnValue}} -> 
-      {ReturnValue, NewAssertions, AssertionMatched} = update_assertions(Assertions, _FunName = handle_call, _Arity = 1, Arguments),
-      % only update assertion if a assertion matched
-      if AssertionMatched -> set_stub(Stub#gen_server_stub { assertions = NewAssertions}); true -> ok end,
-      case ReturnValue of
-        % if assertion had no won stub value, return the value from a previous stub (if exist)
-        ignore -> return_mock_result(StubReturnValue, _ModuleName = gen_server, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid);
-        % otherwise return value from assertion with stub
-        _ -> return_mock_result(ReturnValue, _ModuleName = gen_server, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid)
-      end;
-    {value, _Stub = #gen_server_stub {returns = StubbedReturn}} ->
-      return_mock_result(StubbedReturn, _ModuleName = gen_server_stub, _FunctionName = handle_call, _Arity = 1, Arguments, GenServerPid)    
-  end;
-execute__mock__(_Arguments, GenServerPid, _Type = cast) when is_pid(GenServerPid) -> 
-  no____mock.
-  
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
   ?trace("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
   case 
@@ -282,12 +252,8 @@ execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) ->
 %%----------------------------------------------------
 
 set_stub(Stub = #stub{}) ->
-  cast_to_mock_server({set_stub, Stub});
-set_stub(Stub = #gen_server_stub{}) ->
   cast_to_mock_server({set_stub, Stub}).
 
-get_stub(GenServerPid, Type) when is_pid(GenServerPid), is_atom(Type) ->
-  call_mock_server({get_stub, GenServerPid, Type}).
 get_stub(ModuleName, FunName, Arity, Pid) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
   call_mock_server({get_stub, ModuleName, FunName, Arity, Pid}).
 
@@ -327,31 +293,11 @@ handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = 
         assertions = set_assertion(Assertion, [])
       }
   end,
-  ?trace("~n~n!!!! new stubs = ~p~n~n~n", [set_stub(NewStub, Stubs)]),
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
-
-handle_cast({add_assert_call, _Stub = {gen_server, _GlobalOrLocal, Pid, CallOrCast}, Assertion = #assert_call{}}, State = #state { gen_server_stubs = Stubs}) ->
-  NewStub = case find_gen_server_stub(Pid, CallOrCast, Stubs) of 
-    {value, ExistingStub = #gen_server_stub {assertions = ExistingAssertions}} ->
-      ExistingStub#gen_server_stub {
-        assertions = set_assertion(Assertion, ExistingAssertions)
-      };
-    false -> 
-      #gen_server_stub {
-        pid = Pid,
-        type = CallOrCast,
-        assertions = set_assertion(Assertion, [])
-      }
-  end,
-  {noreply, State#state {gen_server_stubs = set_stub(NewStub, Stubs)}};
-
 
 handle_cast({set_stub, NewStub = #stub{}}, State = #state { stubs = Stubs}) ->
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
 
-handle_cast({set_stub, NewStub = #gen_server_stub{}}, State = #state { gen_server_stubs = Stubs}) ->
-  {noreply, State#state {gen_server_stubs = set_stub(NewStub, Stubs)}};
-  
 handle_cast(Event, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
                             {message, 'received unhandled event in handle_cast.'},
@@ -362,19 +308,15 @@ handle_cast(Event, State) ->
 handle_call({get_stub, ModuleName, FunName, Arity, Pid}, _From, State = #state{stubs = Stubs}) ->
   {reply, find_stub(ModuleName, FunName, Arity, Pid, Stubs), State};
 
-handle_call({get_stub, GenServerPid, Type}, _From, State = #state{ gen_server_stubs = Stubs}) ->
-  {reply, find_gen_server_stub(GenServerPid, Type, Stubs), State};
-
 % gets all stubs with assertions and then deletes all local stubs (that were added for one test) 
 handle_call({get_assertions_and_reset, local}, _From, State) ->
   % TODO: implement. (currently local does the same as global)
   handle_call({get_assertions_and_reset, global}, _From, State);
 
 % gets all stubs with assertions and then deletes all stubs 
-handle_call({get_assertions_and_reset, global}, _From, State = #state{stubs = FunStubs, gen_server_stubs = GenServerStubs}) ->
+handle_call({get_assertions_and_reset, global}, _From, State = #state{stubs = FunStubs}) ->
   FunStubsWithAssertions = [Stub || Stub = #stub{assertions = Assertions} <- FunStubs, Assertions /= []],
-  GenServerStubsWithAssertions = [Stub || Stub = #gen_server_stub{assertions = Assertions} <- GenServerStubs, Assertions /= []],
-  {reply, FunStubsWithAssertions ++ GenServerStubsWithAssertions, State#state {stubs = [], gen_server_stubs = []}};
+  {reply, FunStubsWithAssertions, State#state {stubs = []}};
 
 handle_call(Event, _From, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
@@ -424,13 +366,6 @@ fun_to_stub_record(Fun) when is_function(Fun) ->
       #stub { module_name = ModuleName, fun_name = FunName, arity = Arity}
   end.
 
-find_gen_server_stub(Pid, Type, _Stubs = []) when is_pid(Pid), is_atom(Type) ->
-  false;
-find_gen_server_stub(Pid, Type, _Stubs = [Stub = #gen_server_stub{ pid = ExistingPid, type = ExistingType} | _]) when is_pid(Pid), is_atom(Type), Pid == ExistingPid, Type == ExistingType ->
-  {value, Stub};
-find_gen_server_stub(Pid, Type, _Stubs = [#gen_server_stub{} | Rest]) when is_pid(Pid), is_atom(Type) ->
-  find_gen_server_stub(Pid, Type, Rest).
-
 find_stub(ModuleName, FunName, Arity, Pid, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
   false;
 find_stub(ModuleName, FunName, Arity, Pid, _Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A, pid = P} | _]) 
@@ -441,23 +376,14 @@ find_stub(ModuleName, FunName, Arity, Pid, _Stubs = [#stub{ } | Rest]) when is_a
   find_stub(ModuleName, FunName, Arity, Pid, Rest).
   
 set_stub(NewStub = #stub {}, Stubs) when is_list(Stubs) ->
-  set_stub(NewStub, Stubs, []);
-set_stub(NewStub = #gen_server_stub {}, Stubs) when is_list(Stubs) ->
   set_stub(NewStub, Stubs, []).
   
 set_stub(NewStub = #stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
   [NewStub | lists:reverse(CheckStubs)];
-set_stub(NewStub = #gen_server_stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
-  [NewStub | lists:reverse(CheckStubs)];
 set_stub(NewStub = #stub {module_name = N1, fun_name = F1, arity = A1, pid = P1}, _Stubs = [#stub{module_name = N2, fun_name = F2, arity = A2, pid = P2}|Rest], CheckStubs ) 
                                         when is_list(CheckStubs), N1 == N2, F1 == F2, A1 == A2, P1 == P2 -> 
   lists:reverse(CheckStubs) ++ [NewStub | Rest];
-set_stub(NewStub = #gen_server_stub {pid = Pid1}, _Stubs = [#gen_server_stub{pid = Pid2}|Rest], CheckStubs ) 
-                                        when is_list(CheckStubs), Pid1 == Pid2 -> 
-  lists:reverse(CheckStubs) ++ [NewStub | Rest];
 set_stub(NewStub = #stub {}, _Stubs = [Stub = #stub{}|Rest], CheckStubs) when is_list(CheckStubs) -> 
-  set_stub(NewStub, Rest, [Stub | CheckStubs]);
-set_stub(NewStub = #gen_server_stub {}, _Stubs = [Stub = #gen_server_stub{}|Rest], CheckStubs) when is_list(CheckStubs) -> 
   set_stub(NewStub, Rest, [Stub | CheckStubs]).
 
 
@@ -639,9 +565,6 @@ auto_complete_return_value(Value, _ModuleName, _FunctionName, _Arity, _Arguments
   
 check_assertions([], Acc) ->
   Acc;
-check_assertions([Stub = #gen_server_stub{ assertions = Assertions } | Rest], Acc) ->
-  NewAcc = check_assertions(Stub, Assertions, Acc),
-  check_assertions(Rest, NewAcc);
 check_assertions([Stub = #stub{ assertions = Assertions } | Rest], Acc) ->
   NewAcc = check_assertions(Stub, Assertions, Acc),
   check_assertions(Rest, NewAcc).
@@ -660,17 +583,7 @@ check_assertions(Stub, [UnknownAssertion | Rest], _Acc) ->
   check_assertions(Stub, Rest, error).
  
 stub_error_info(#stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}) -> 
-  {function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))};
-stub_error_info(#gen_server_stub{pid = Pid, type = Type}) -> 
-  Name = case process_info(Pid, registered_name) of
-    {registered_name, RegName} when is_atom(RegName) -> atom_to_list(RegName) ++ "/";
-    _ -> pid_to_list(Pid) ++ "/"
-  end,
-  Info = case Type of
-    call -> list_to_atom(Name ++ "handle_call");
-    cast -> list_to_atom(Name ++ "handle_cast")
-  end,
-  {gen_server, Info}.
+  {function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ atom_to_list(FunctionName) ++ "/" ++ integer_to_list(Arity))}.
                                     
 no_trace(_) -> ok.
 no_trace(_, _) -> ok.
