@@ -104,12 +104,25 @@ find_stub_test() ->
   NotStubbedFunName = fun_with_arity_xxx,
   NotStubbedModuleName = not_stubbed_module,
   NotStubbedArity = 5,
-  ?assertMatch({value, Stub1}, find_stub(ModuleName1, FunName1, Arity1, Stubs)),
-  ?assertMatch({value, Stub2}, find_stub(ModuleName2, FunName2, Arity2, Stubs)),
-  ?assertMatch({value, Stub3}, find_stub(ModuleName3, FunName3, Arity3, Stubs)),
-  ?assertMatch(false, find_stub(ModuleName1, NotStubbedFunName, Arity1, Stubs)),
-  ?assertMatch(false, find_stub(NotStubbedModuleName, FunName2, Arity2, Stubs)),
-  ?assertMatch(false, find_stub(ModuleName1, FunName1, NotStubbedArity, Stubs)).
+  ?assertMatch({value, Stub1}, find_stub(ModuleName1, FunName1, Arity1, ignore, Stubs)),
+  ?assertMatch({value, Stub2}, find_stub(ModuleName2, FunName2, Arity2, ignore, Stubs)),
+  ?assertMatch({value, Stub3}, find_stub(ModuleName3, FunName3, Arity3, ignore, Stubs)),
+  ?assertMatch(false, find_stub(ModuleName1, NotStubbedFunName, Arity1, ignore, Stubs)),
+  ?assertMatch(false, find_stub(NotStubbedModuleName, FunName2, Arity2, ignore, Stubs)),
+  ?assertMatch(false, find_stub(ModuleName1, FunName1, NotStubbedArity, ignore, Stubs)).
+
+find_stub_with_pid_test() ->
+  Stubs = [ Stub1 = #stub{ module_name = ModuleName1 = mock_dummy, fun_name = FunName1 = fun_with_arity_zero,  arity = Arity1 = 0, pid = Pid1 = list_to_pid("<0.1.0>")},  
+            Stub2 = #stub{ module_name = ModuleName2 = mock_dummy, fun_name = FunName2 = fun_with_arity_zero,  arity = Arity2 = 0, pid = Pid2 = list_to_pid("<0.2.0>")},   
+            Stub3 = #stub{ module_name = ModuleName3 = mock_dummy, fun_name = FunName3 = fun_with_arity_zero,  arity = Arity3 = 0, pid = Pid3 = none}],  
+  NotExistingPid = list_to_pid("<0.10.0>"),
+  ?assertMatch({value, Stub1}, find_stub(ModuleName1, FunName1, Arity1, Pid1, Stubs)),
+  ?assertMatch({value, Stub1}, find_stub(ModuleName1, FunName1, Arity1, ignore, Stubs)),
+  ?assertMatch({value, Stub2}, find_stub(ModuleName2, FunName2, Arity2, Pid2, Stubs)),
+  ?assertMatch({value, Stub3}, find_stub(ModuleName3, FunName3, Arity3, Pid3, Stubs)),
+  ?assertMatch(false, find_stub(ModuleName1, FunName1, Arity1, NotExistingPid, Stubs)).
+  
+
 
 set_stub_test() ->
   Stubs = [Stub1 = #stub{ module_name = mock_dummy, fun_name = fun_with_arity_zero, arity = 0, returns = 0},  
@@ -334,33 +347,42 @@ assert_called_should_succeed_for_mocked_global_gen_server_test() ->
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
-%% TODO: check gen_server pid when executing mock, so that the following test fails:
-% should_fail_test() ->
-%   ?assertCompiledNoStub(gen_server_dummy),
-%   ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
-%   ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
-%   receive after 100 -> ok end,
-%   {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
-%   {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-%   ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
-%   ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
-%   ?assertMatch(ok, gen_server:call(dummy1, {save_record, foo})),
-%   gen_server_dummy:stop(Pid).
-%%
-%% ... because dummy2 is not called
+assert_called_should_fail_for_gen_server_with_different_pid_that_was_not_called_test() ->
+  ?assertCompiledNoStub(gen_server_dummy),
+  TestFun = fun() ->
+    ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
+    ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
+    receive after 100 -> ok end,
+    {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
+    {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
+    ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertMatch(ok, gen_server:call(dummy1, {save_record, foo})),
+    gen_server_dummy:stop(Pid1),
+    gen_server_dummy:stop(Pid1)
+  end,
+  ?assertMatch(error, eunit:test(TestFun)).
+  
+
+assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
+  ?assertCompiledNoStub(gen_server_dummy),
+  TestFun = fun() ->
+    ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
+    ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
+    receive after 100 -> ok end,
+    {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
+    {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
+    ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertMatch(value1, gen_server:call(dummy1, {save_record, foo})),
+    ?assertMatch(value1, gen_server:call(dummy2, {save_record, foo})),
+    gen_server_dummy:stop(Pid1),
+    gen_server_dummy:stop(Pid1)
+  end,
+  ?assertMatch(ok, eunit:test(TestFun)).
 
 %% TODO: ?andReturn(ok) should do the same as ?andReturn({reply, ok, foo}) if ?assertCalled is used with gen_server,
 %%       so add {reply, ReturnValue, State} automatically if not std gen_server return was specified.
-
-foo_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
-  ?assertMatch(ok, gen_server_dummy:stop(dummy)),
-  receive after 100 -> ok end,
-  {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-  ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
-  ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
-  gen_server_dummy:stop(Pid).
-
 
 assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
@@ -373,6 +395,21 @@ assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
     gen_server_dummy:stop(Pid)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
+
+foo_test() ->
+  ?assertCompiledNoStub(gen_server_dummy),
+  ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
+  ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
+  receive after 100 -> ok end,
+  {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
+  {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
+  ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok1, foo})),
+  ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok2, foo})),
+  ?assertMatch(ok1, gen_server:call(dummy1, {save_record, foo})),
+  ?assertMatch(ok2, gen_server:call(dummy2, {save_record, foo})),
+  gen_server_dummy:stop(Pid1),
+  gen_server_dummy:stop(Pid1),
+  check_assertions().
 
 
 

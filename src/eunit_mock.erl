@@ -89,6 +89,8 @@
     module_name,      %% atom(): the name of the module to stub the given function for
     fun_name,         %% atom(): the name of the (exported) function in the module to stub
     arity,            %% int(): the arity of the function to stub
+    pid = none,        %% none | pid(): the process that should call the fun, or none, if any process
+                      %%         can call that fun
     returns = ignore, %% fun() | term() | ignore: either a function or a fixed return value that should
                       %%    be returned instead of the real function. ignore is only valid when
                       %% assertions are set.
@@ -199,7 +201,7 @@ assert_called({GenServerPid, GenServerModuleName}, Times, Options, MODULE, LINE)
     ok ->
       case create_assertion(Times, Options, _Arity = 3) of
         Assertion = #assert_call{} ->
-          add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = handle_call, arity = 3} , Assertion, MODULE, LINE);
+          add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = handle_call, arity = 3, pid = GenServerPid} , Assertion, MODULE, LINE);
         Error -> Error
       end;
     Error -> Error
@@ -247,7 +249,12 @@ execute__mock__(_Arguments, GenServerPid, _Type = cast) when is_pid(GenServerPid
   
 execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) -> 
   ?trace("executing do_mock(~w, ~w, ~w, ~w, ~w)~n", [ModuleName, FunctionName, Arity, Arguments, Self]),
-  case get_stub(ModuleName, FunctionName, Arity) of 
+  case 
+    case get_stub(ModuleName, FunctionName, Arity, Self) of
+      false -> get_stub(ModuleName, FunctionName, Arity, _ExpectedPid = none);
+      Found = {value, _} -> Found
+    end
+  of 
     false ->
       no____mock;
     % if assertion has stubbed value, return stubbed value from matched assertion and update assertion
@@ -277,8 +284,8 @@ set_stub(Stub = #gen_server_stub{}) ->
 
 get_stub(GenServerPid, Type) when is_pid(GenServerPid), is_atom(Type) ->
   call_mock_server({get_stub, GenServerPid, Type}).
-get_stub(ModuleName, FunName, Arity) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
-  call_mock_server({get_stub, ModuleName, FunName, Arity}).
+get_stub(ModuleName, FunName, Arity, Pid) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
+  call_mock_server({get_stub, ModuleName, FunName, Arity, Pid}).
 
 add_assert_call(Stub = #stub{}, Assertion, MODULE, LINE) ->
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}});
@@ -305,8 +312,8 @@ init([]) ->
   State = #state{},
   {ok, State}.
 
-handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = FunName, arity = Arity}, Assertion = #assert_call{}}, State = #state { stubs = Stubs}) ->
-  NewStub = case find_stub(ModuleName, FunName, Arity, Stubs) of 
+handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = FunName, arity = Arity, pid = Pid}, Assertion = #assert_call{}}, State = #state { stubs = Stubs}) ->
+  NewStub = case find_stub(ModuleName, FunName, Arity, Pid, Stubs) of 
     {value, ExistingStub = #stub {assertions = ExistingAssertions}} ->
       ExistingStub#stub {
         assertions = set_assertion(Assertion, ExistingAssertions)
@@ -316,6 +323,7 @@ handle_cast({add_assert_call, Stub = #stub{module_name = ModuleName, fun_name = 
         assertions = set_assertion(Assertion, [])
       }
   end,
+  ?trace("~n~n!!!! new stubs = ~p~n~n~n", [set_stub(NewStub, Stubs)]),
   {noreply, State#state {stubs = set_stub(NewStub, Stubs)}};
 
 handle_cast({add_assert_call, _Stub = {gen_server, _GlobalOrLocal, Pid, CallOrCast}, Assertion = #assert_call{}}, State = #state { gen_server_stubs = Stubs}) ->
@@ -347,8 +355,8 @@ handle_cast(Event, State) ->
   {noreply, State}.
 
 
-handle_call({get_stub, ModuleName, FunName, Arity}, _From, State = #state{stubs = Stubs}) ->
-  {reply, find_stub(ModuleName, FunName, Arity, Stubs), State};
+handle_call({get_stub, ModuleName, FunName, Arity, Pid}, _From, State = #state{stubs = Stubs}) ->
+  {reply, find_stub(ModuleName, FunName, Arity, Pid, Stubs), State};
 
 handle_call({get_stub, GenServerPid, Type}, _From, State = #state{ gen_server_stubs = Stubs}) ->
   {reply, find_gen_server_stub(GenServerPid, Type, Stubs), State};
@@ -419,13 +427,14 @@ find_gen_server_stub(Pid, Type, _Stubs = [Stub = #gen_server_stub{ pid = Existin
 find_gen_server_stub(Pid, Type, _Stubs = [#gen_server_stub{} | Rest]) when is_pid(Pid), is_atom(Type) ->
   find_gen_server_stub(Pid, Type, Rest).
 
-find_stub(ModuleName, FunName, Arity, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+find_stub(ModuleName, FunName, Arity, Pid, _Stubs = []) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
   false;
-find_stub(ModuleName, FunName, Arity, _Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A} | _]) when ModuleName == M, FunName == F, Arity == A,
-                                                                                                                  is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
+find_stub(ModuleName, FunName, Arity, Pid, _Stubs = [Stub = #stub{ module_name = M, fun_name = F, arity = A, pid = P} | _]) 
+      when ModuleName == M, FunName == F, Arity == A, Pid == P orelse Pid == ignore,
+      is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
   {value, Stub};
-find_stub(ModuleName, FunName, Arity, _Stubs = [#stub{ } | Rest]) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity) ->
-  find_stub(ModuleName, FunName, Arity, Rest).
+find_stub(ModuleName, FunName, Arity, Pid, _Stubs = [#stub{ } | Rest]) when is_atom(ModuleName), is_atom(FunName), is_integer(Arity), is_pid(Pid) orelse Pid == ignore orelse Pid == none ->
+  find_stub(ModuleName, FunName, Arity, Pid, Rest).
   
 set_stub(NewStub = #stub {}, Stubs) when is_list(Stubs) ->
   set_stub(NewStub, Stubs, []);
@@ -436,8 +445,8 @@ set_stub(NewStub = #stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) -
   [NewStub | lists:reverse(CheckStubs)];
 set_stub(NewStub = #gen_server_stub {}, _Stubs = [], CheckStubs) when is_list(CheckStubs) ->
   [NewStub | lists:reverse(CheckStubs)];
-set_stub(NewStub = #stub {module_name = N1, fun_name = F1, arity = A1}, _Stubs = [#stub{module_name = N2, fun_name = F2, arity = A2}|Rest], CheckStubs ) 
-                                        when is_list(CheckStubs), N1 == N2, F1 == F2, A1 == A2 -> 
+set_stub(NewStub = #stub {module_name = N1, fun_name = F1, arity = A1, pid = P1}, _Stubs = [#stub{module_name = N2, fun_name = F2, arity = A2, pid = P2}|Rest], CheckStubs ) 
+                                        when is_list(CheckStubs), N1 == N2, F1 == F2, A1 == A2, P1 == P2 -> 
   lists:reverse(CheckStubs) ++ [NewStub | Rest];
 set_stub(NewStub = #gen_server_stub {pid = Pid1}, _Stubs = [#gen_server_stub{pid = Pid2}|Rest], CheckStubs ) 
                                         when is_list(CheckStubs), Pid1 == Pid2 -> 
@@ -844,9 +853,9 @@ pattern_grp([]) ->
 
 bit_types([]) ->
     [];
-bit_types([Atom | Rest]) when atom(Atom) ->
+bit_types([Atom | Rest]) when is_atom(Atom) ->
     [Atom | bit_types(Rest)];
-bit_types([{Atom, Integer} | Rest]) when atom(Atom), integer(Integer) ->
+bit_types([{Atom, Integer} | Rest]) when is_atom(Atom), is_integer(Integer) ->
     [{Atom, Integer} | bit_types(Rest)].
 
 
@@ -874,7 +883,7 @@ pattern_fields([]) -> [].
 
 %% -type guard([GuardTest]) -> [GuardTest].
 
-guard([G0|Gs]) when list(G0) ->
+guard([G0|Gs]) when is_list(G0) ->
     [guard0(G0) | guard(Gs)];
 guard(L) ->
     guard0(L).
