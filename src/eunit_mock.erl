@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/5, check_assertions/0]).
+-export([stub/2, assert_called/5, check_assertions/0, get_mock_info/1]).
 
 -ifdef(TRACE).
 -define(trace, io:format).
@@ -158,10 +158,12 @@ stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
 %%    match() = fun() | term(),
 %%    return() = fun() | term(),
 %%    arguments() = [term()]
+
+% mock a gen_server or gen_fsm process with regitsered name, and start a fake process if no proces with the registered name is running
 assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) when 
                                                        (GlobalOrLocal == global orelse GlobalOrLocal == local),
                                                        (is_integer(Times) orelse Times == at_least_once),
-                                                       is_list(Options) ->
+                                                       is_list(Options) ->                                                         
   case 
     case
       case GlobalOrLocal of
@@ -170,35 +172,62 @@ assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) whe
       end
     of
       undefined ->
-        gen_server:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_server, [RegisteredName], []);
+        case get_expected_state(Options) of
+          false -> % start faked gen_server process
+            gen_server:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_server, [RegisteredName], []);
+          {inState, _StateName} -> % start faked gen_fsm process
+            gen_fsm:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_fsm, [RegisteredName], [])
+        end;
       ExistingPid ->
         {ok, ExistingPid}                                                       
     end 
   of
     {ok, Pid} -> 
-      case create_assertion(Times, Options, FunName = handle_call, _Arity = 3) of
-        Assertion = #assert_call{} ->
-          add_assert_call(_Stub = #stub { module_name = eunit_mocked_gen_server, fun_name = FunName, arity = 3, pid = Pid} , Assertion, MODULE, LINE);
-        Error -> Error
-      end;
+      assert_called(Pid, Times, Options, MODULE, LINE);
     Error -> Error
   end;
-assert_called({GenServerPid, GenServerModuleName}, Times, Options, MODULE, LINE) when is_atom(GenServerModuleName), 
-                                                       is_pid(GenServerPid),
+% mock existing, running gen_server or gen_fsm process
+assert_called(GenSomethingPid, Times, Options, MODULE, LINE) when 
+                                                       is_pid(GenSomethingPid),
                                                        (is_integer(Times) orelse Times == at_least_once),
                                                        is_list(Options) ->
-  WasCompiledWithMocking = case is_mocked(GenServerModuleName) of
-    false -> recompile_for_mocking(GenServerModuleName);
-    true -> ok
-  end,
-  case WasCompiledWithMocking of
-    ok ->
-      case create_assertion(Times, Options, FunName = handle_call, _Arity = 3) of
-        Assertion = #assert_call{} ->
-          add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = FunName, arity = 3, pid = GenServerPid} , Assertion, MODULE, LINE);
+  case get_mock_info(GenSomethingPid) of
+    {GenServerModuleName, Behaviour, IsMocked} ->
+      WasCompiledWithMocking = case IsMocked of
+        false -> recompile_for_mocking(GenServerModuleName);
+        true -> ok
+      end,
+      case WasCompiledWithMocking of
+        ok ->
+          case Behaviour of
+            gen_server ->
+              case create_assertion(Times, Options, FunName = handle_call, _Arity = 3) of
+                Assertion = #assert_call{} ->
+                  add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = FunName, arity = 3, pid = GenSomethingPid} , Assertion, MODULE, LINE);
+                Error -> Error
+              end;
+            gen_fsm ->
+              case get_expected_state(Options) of
+                false -> % assert called for gen_fsm processes required defined state by the ?inAnyState or ?inState(_) macro
+                  {error, state_missing};
+                {inState, StateName} -> 
+                  {FunName, Arity} = case StateName of 
+                    all -> {handle_sync_event, 4};
+                    _ -> {StateName, 3}
+                  end, 
+                  case create_assertion(Times, Options, FunName, Arity) of
+                    Assertion = #assert_call{} ->
+                      add_assert_call(_Stub = #stub { module_name = GenServerModuleName, fun_name = FunName, arity = Arity, pid = GenSomethingPid} , Assertion, MODULE, LINE);
+                    Error -> Error
+                  end
+              end;
+            UnsupportedBehaviour ->
+              {error, {unsupported_behaviour, UnsupportedBehaviour}}
+          end;
         Error -> Error
       end;
-    Error -> Error
+    not_mockable ->
+      {error, not_mockable}
   end;
 assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock), 
                                                        (is_integer(Times) orelse Times == at_least_once),

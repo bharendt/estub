@@ -393,15 +393,14 @@ assert_called_should_fail_for_gen_server_with_different_pid_that_was_not_called_
     receive after 100 -> ok end,
     {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
     {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-    ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
-    ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
     ?assertMatch(ok, gen_server:call(dummy1, {save_record, foo})),
     gen_server_dummy:stop(Pid1),
     gen_server_dummy:stop(Pid1)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
   
-
 assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
@@ -410,8 +409,8 @@ assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
     receive after 100 -> ok end,
     {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
     {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-    ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
-    ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
     ?assertMatch(value1, gen_server:call(dummy1, {save_record, foo})),
     ?assertMatch(value1, gen_server:call(dummy2, {save_record, foo})),
     gen_server_dummy:stop(Pid1),
@@ -425,7 +424,7 @@ assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
     ?assertMatch(ok, gen_server_dummy:stop(dummy)),
     receive after 100 -> ok end,
     {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-    ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
     ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
     gen_server_dummy:stop(Pid)
   end,
@@ -436,7 +435,7 @@ assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_s
     ?assertMatch(ok, gen_server_dummy:stop(dummy)),
     receive after 100 -> ok end,
     {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-    ?assertCalled({Pid, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn(ok)),
+    ?assertCalled(Pid, ?once ?with([{save_record, _}, _From, _State]) ?andReturn(ok)),
     ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
     gen_server_dummy:stop(Pid)
   end,
@@ -450,8 +449,8 @@ foo_test() ->
   receive after 100 -> ok end,
   {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
   {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-  ?assertCalled({Pid1, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok1, foo})),
-  ?assertCalled({Pid2, gen_server_dummy}, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok2, foo})),
+  ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok1, foo})),
+  ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok2, foo})),
   ?assertMatch(ok1, gen_server:call(dummy1, {save_record, foo})),
   ?assertMatch(ok2, gen_server:call(dummy2, {save_record, foo})),
   gen_server_dummy:stop(Pid1),
