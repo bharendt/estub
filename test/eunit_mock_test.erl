@@ -105,6 +105,19 @@ fun_to_stub_record_fail_test() ->
   LocalFun = fun() -> ok end,
   ?assertMatch({error, local_fun}, fun_to_stub_record(LocalFun)).
   
+get_expected_state_all_test() ->
+  __Times__ = ?once ?inAnyState options___end],  
+  ?assertMatch({inState, all}, get_expected_state(__Options__)).
+
+get_expected_state_idle_test() ->
+  __Times__ = ?once ?inState(idle) ?with(foo) options___end],  
+  ?assertMatch({inState, idle}, get_expected_state(__Options__)).
+
+get_expected_state_no_state_test() ->
+  __Times__ = ?once ?with(foo) options___end],  
+  ?assertMatch(false, get_expected_state(__Options__)).
+
+  
 find_stub_test() ->
   Stubs = [Stub1 = #stub{ module_name = ModuleName1 = mock_dummy, fun_name = FunName1 = fun_with_arity_zero, arity = Arity1 = 0},  
            Stub2 = #stub{ module_name = ModuleName2 = mock_dummy, fun_name = FunName2 = fun_with_arity_one,  arity = Arity2 = 1},   

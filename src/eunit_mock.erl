@@ -158,19 +158,19 @@ stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
 %%    match() = fun() | term(),
 %%    return() = fun() | term(),
 %%    arguments() = [term()]
-assert_called({GlobalOrLocal, GenServerModuleName}, Times, Options, MODULE, LINE) when is_atom(GenServerModuleName), 
+assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) when 
                                                        (GlobalOrLocal == global orelse GlobalOrLocal == local),
                                                        (is_integer(Times) orelse Times == at_least_once),
                                                        is_list(Options) ->
   case 
     case
       case GlobalOrLocal of
-        global -> global:whereis_name(GenServerModuleName); 
-        local  -> whereis(GenServerModuleName)
+        global -> global:whereis_name(RegisteredName); 
+        local  -> whereis(RegisteredName)
       end
     of
       undefined ->
-        gen_server:start({GlobalOrLocal, GenServerModuleName}, eunit_mocked_gen_server, [GenServerModuleName], []);
+        gen_server:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_server, [RegisteredName], []);
       ExistingPid ->
         {ok, ExistingPid}                                                       
     end 
@@ -616,7 +616,11 @@ get_module_behaviour(ModuleName) when is_atom(ModuleName) ->
     false -> {error, no_behaviour}
   end.
 
-
+get_expected_state(Options) when is_list(Options) ->
+  case lists:keysearch(inState, 1, Options) of
+    {value, Found = {inState, _StateName}} -> Found;
+    false -> false
+  end.
  
 %%----------------------------------------------------
 %% mocking parse transform
