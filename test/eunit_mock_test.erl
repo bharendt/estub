@@ -46,6 +46,10 @@ recompile_with_mocking_parse_transform_test() ->
   ?assertMatch(ok, recompile_for_mocking(mock_dummy)),
   ?assertMatch({value,{mocked,[true]}}, lists:keysearch(mocked, 1, mock_dummy:module_info(attributes))),
   ?assertMatch(true, is_mocked(mock_dummy)).
+
+eunit_mocked_gen_server_should_appear_as_mocked_module_test() ->  
+  ?assertMatch(ok, util:refresh(eunit_mocked_gen_server)),
+  ?assertMatch(true, is_mocked(eunit_mocked_gen_server)).
   
 stubbed_module_should_be_recompiled_with_mock_parse_transform_test() ->  
   ?assertCompiledNoStub(mock_dummy),
@@ -188,7 +192,7 @@ get_mock_info_for_gen_server_test() ->
   StartResult = gen_server:start({local, dummy}, eunit_mocked_gen_server, [dummy], []),
   ?assertMatch({ok, _}, StartResult),
   {ok, Pid} = StartResult,
-  ?assertMatch({eunit_mocked_gen_server, gen_server, false}, get_mock_info(Pid)),
+  ?assertMatch({eunit_mocked_gen_server, gen_server, true}, get_mock_info(Pid)),
   ?assertMatch(ok, eunit_mocked_gen_server:stop(Pid)),
   ?assertMatch(undefined, whereis(dummy)).
   
