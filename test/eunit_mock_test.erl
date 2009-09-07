@@ -50,6 +50,10 @@ recompile_with_mocking_parse_transform_test() ->
 eunit_mocked_gen_server_should_appear_as_mocked_module_test() ->  
   ?assertMatch(ok, util:refresh(eunit_mocked_gen_server)),
   ?assertMatch(true, is_mocked(eunit_mocked_gen_server)).
+
+eunit_mocked_gen_fsm_should_appear_as_mocked_module_test() ->  
+  ?assertMatch(ok, util:refresh(eunit_mocked_gen_fsm)),
+  ?assertMatch(true, is_mocked(eunit_mocked_gen_fsm)).
   
 stubbed_module_should_be_recompiled_with_mock_parse_transform_test() ->  
   ?assertCompiledNoStub(mock_dummy),
@@ -195,6 +199,15 @@ get_mock_info_for_gen_server_test() ->
   ?assertMatch({eunit_mocked_gen_server, gen_server, true}, get_mock_info(Pid)),
   ?assertMatch(ok, eunit_mocked_gen_server:stop(Pid)),
   ?assertMatch(undefined, whereis(dummy)).
+
+get_mock_info_for_gen_fsm_test() ->
+  StartResult = gen_fsm:start({local, dummy}, eunit_mocked_gen_fsm, [dummy], []),
+  ?assertMatch({ok, _}, StartResult),
+  {ok, Pid} = StartResult,
+  ?assertMatch({eunit_mocked_gen_fsm, gen_fsm, true}, get_mock_info(Pid)),
+  ?assertMatch(ok, eunit_mocked_gen_fsm:stop(Pid)),
+  ?assertMatch(undefined, whereis(dummy)).
+
   
 assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
   ?assertCompiled(mock_dummy),
