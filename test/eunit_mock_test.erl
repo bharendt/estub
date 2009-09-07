@@ -184,6 +184,14 @@ mocked_module_should_be_recompiled_with_mock_parse_transform_test() ->
   ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
+get_mock_info_for_gen_server_test() ->
+  StartResult = gen_server:start({local, dummy}, eunit_mocked_gen_server, [dummy], []),
+  ?assertMatch({ok, _}, StartResult),
+  {ok, Pid} = StartResult,
+  ?assertMatch({eunit_mocked_gen_server, gen_server, false}, get_mock_info(Pid)),
+  ?assertMatch(ok, eunit_mocked_gen_server:stop(Pid)),
+  ?assertMatch(undefined, whereis(dummy)).
+  
 assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->

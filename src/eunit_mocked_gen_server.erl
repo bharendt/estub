@@ -7,6 +7,7 @@
 
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
+-export([stop/0, stop/1]).
 
 -record(state, {
     mocked_module_name
@@ -21,17 +22,22 @@ init([ModuleName]) ->
     mocked_module_name = ModuleName
   },
   {ok, State}.
+  
+stop() ->
+  stop(?MODULE).
 
-handle_cast({'$add_assert_call', Assertion}, State) ->
-  io:format("adding assertion to gen_server process: ~w~n", [Assertion]),
-  {noreply, State};
-
+stop(Process) ->
+  gen_server:call(Process, '__$stop__').
+  
 handle_cast(Event, State) ->
   error_logger:info_report([{module, ?MODULE}, {line, ?LINE}, {self, self()}, 
                             {message, 'received unhandled event in handle_cast.'},
                             {event, Event}]),
   {noreply, State}.
 
+handle_call('__$stop__', _From, State) ->
+  {stop, normal, ok, State};
+  
 handle_call(Event, From, State = #state {mocked_module_name = ModuleName}) ->
   case eunit_mock:execute__mock__(?MODULE, handle_call, 3, [Event, From, State], self()) of
     no____mock ->

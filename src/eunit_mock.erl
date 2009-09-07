@@ -587,6 +587,36 @@ stub_error_info(#stub{module_name = ModuleName, fun_name = FunctionName, arity =
                                     
 no_trace(_) -> ok.
 no_trace(_, _) -> ok.
+
+get_mock_info(Pid) when is_pid(Pid) ->
+  case  proc_lib:translate_initial_call(Pid) of
+    {ModuleName,init,1} when is_atom(ModuleName) ->
+      case get_module_behaviour(ModuleName) of
+        {error, _} -> not_mockable;
+        Behaviour -> {ModuleName, Behaviour, is_mocked(ModuleName)}
+      end;
+    _ ->
+      not_mockable
+  end.
+ 
+get_module_behaviour(ModuleName) when is_atom(ModuleName) ->
+  case 
+    case lists:keysearch(behaviour, 1, ModuleName:module_info(attributes)) of
+      {value, {behaviour, [Behaviour]}} -> {ok, Behaviour};
+      false -> % try AE instead of BE typing
+        case lists:keysearch(behavior, 1, ModuleName:module_info(attributes)) of
+          {value, {behavior, [Behaviour]}} -> {ok, Behaviour};
+          false -> false
+        end
+    end
+  of
+    {ok, gen_fsm} -> gen_fsm;
+    {ok, gen_server} -> gen_server;
+    {ok, _Other} -> {error, unsupported_behaviour};
+    false -> {error, no_behaviour}
+  end.
+
+
  
 %%----------------------------------------------------
 %% mocking parse transform
