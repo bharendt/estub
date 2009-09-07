@@ -169,7 +169,7 @@ terminate(Reason, _StateName, _StateData) ->
 %%% Interface functions.
 %%% ---------------------------------------------------
 
--spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
+%-spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
 
 behaviour_info(callbacks) ->
     [{init,1},{handle_event,3},{handle_sync_event,4},{handle_info,3},
@@ -429,7 +429,7 @@ decode_msg(Msg,Parent, Name, StateName, StateData, Mod, Time, Debug, Hib) ->
 system_continue(Parent, Debug, [Name, StateName, StateData, Mod, Time]) ->
     loop(Parent, Name, StateName, StateData, Mod, Time, Debug).
 
--spec system_terminate(term(), _, _, [term(),...]) -> no_return().
+%-spec system_terminate(term(), _, _, [term(),...]) -> no_return().
 
 system_terminate(Reason, _Parent, Debug,
 		 [Name, StateName, StateData, Mod, _Time]) ->
@@ -567,7 +567,7 @@ reply(Name, {To, Tag}, Reply, Debug, StateName) ->
 %%% Terminate the server.
 %%% ---------------------------------------------------
 
--spec terminate(term(), _, _, atom(), _, _, _) -> no_return().
+%-spec terminate(term(), _, _, atom(), _, _, _) -> no_return().
 
 terminate(Reason, Name, Msg, Mod, StateName, StateData, Debug) ->
     case catch Mod:terminate(Reason, StateName, StateData) of
