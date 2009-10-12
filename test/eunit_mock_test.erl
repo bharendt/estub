@@ -441,6 +441,10 @@ assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_s
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
+assert_called_should_return_tuple_test() ->
+  ?assertCompiledNoStub(gen_server_dummy),
+  ?assertCalled(fun mock_dummy:fun_with_arity_three/3, ?atLeastOnce ?andReturn({atomic, ok})),
+  mock_dummy:fun_with_arity_three(foo, foobar, {bar, baz}).
 
 foo_test() ->
   ?assertCompiledNoStub(gen_server_dummy),

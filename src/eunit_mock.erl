@@ -435,9 +435,9 @@ create_assertion(_Options = [], Assertion = #assert_call{}, _FunName, _Arity) ->
   Assertion;
 create_assertion(_Options = [options___end | Rest], Assertion = #assert_call{}, FunName, Arity) ->  
   create_assertion(Rest, Assertion, FunName, Arity);
-create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun, Arity) ->  
+create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun), is_function(Fun, Arity) ->  
   create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, FunName, Arity);
-create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun, 1) ->  % ?with() macro creates fun of arity one
+create_assertion(_Options = [Option = {with, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun), is_function(Fun, 1) ->  % ?with() macro creates fun of arity one
   create_assertion(Rest, Assertion#assert_call{expected_arguments = Option}, FunName, Arity);
 create_assertion(_Options = [_Option = {with, Fun, _} | _Rest], _Assertion = #assert_call{}, _FunName, _Arity) when is_function(Fun) ->  
   {error, wrong_arity};
@@ -448,17 +448,17 @@ create_assertion(_Options = [_Option = {with, Arguments, _} | _Rest], _Assertion
 create_assertion(_Options = [_Option = {with, SingleArgument, ArgumentText} | Rest], Assertion = #assert_call{}, FunName, Arity) ->  
   create_assertion([{with, [SingleArgument], ArgumentText} | Rest], Assertion, FunName, Arity);
 
-create_assertion(_Options = [Option = {andShouldReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun, Arity) ->  
+create_assertion(_Options = [Option = {andShouldReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun), is_function(Fun, Arity) ->  
   create_assertion(Rest, Assertion#assert_call{expected_return = Option}, FunName, Arity);
 create_assertion(_Options = [_Option = {andShouldReturn, Fun, _} | _Rest], _Assertion = #assert_call{}, _FunName, _Arity) when is_function(Fun) ->  
   {error, wrong_arity};
 create_assertion(_Options = [Option = {andShouldReturn, _, _} | Rest], Assertion = #assert_call{}, FunName, Arity) ->  
   create_assertion(Rest, Assertion#assert_call{expected_return = Option}, FunName, Arity);
 
-create_assertion(_Options = [Option = {andReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun, Arity) ->  
+create_assertion(_Options = [Option = {andReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName, Arity) when is_function(Fun), is_function(Fun, Arity) ->  
   create_assertion(Rest, Assertion#assert_call{returns = Option}, FunName, Arity);
 % allow functions for handle_call mocks that take only the event as argument  
-create_assertion(_Options = [Option = {andReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName = handle_call, Arity = 3) when is_function(Fun, 1) -> 
+create_assertion(_Options = [Option = {andReturn, Fun, _} | Rest], Assertion = #assert_call{}, FunName = handle_call, Arity = 3) when is_function(Fun), is_function(Fun, 1) -> 
   create_assertion(Rest, Assertion#assert_call{returns = Option}, FunName, Arity);
 create_assertion(_Options = [_Option = {andReturn, Fun, _} | _Rest], _Assertion = #assert_call{}, _FunName, _Arity) when is_function(Fun) ->  
   ?trace("shit!!~n"),
@@ -491,7 +491,7 @@ recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
   end.
 
 % special case for handle_call funs, because they can also have only one argument matching the event
-check_match({_, Fun, _}, Found = [Event, _From, _State], _FunctionName = handle_call, _Arity = 3) when is_function(Fun, 1) ->
+check_match({_, Fun, _}, Found = [Event, _From, _State], _FunctionName = handle_call, _Arity = 3) when is_function(Fun), is_function(Fun, 1) ->
   case 
     case catch Fun(Found) of
       {'EXIT', _} -> ?trace("shit~n"), catch Fun(Event);
@@ -537,7 +537,7 @@ update_assertions([Assertion = #assert_call{ expected_arguments = ExpectedArgume
   {NewReturn, ReturnFunMatched} = case Returns of
     _ when ReturnValue /= ignore -> ?trace("using old return value ~w~n", [ReturnValue]), {ReturnValue, true}; % keep first (= more recent) return value
     undefined -> ?trace("no return value specified ~n"), {ReturnValue, true};
-    {andReturn, ReturnFun, _F} when is_function(ReturnFun, Arity) ->
+    {andReturn, ReturnFun, _F} when is_function(ReturnFun), is_function(ReturnFun, Arity) ->
       ?trace("returning value from function ~s~n", [_F]),
       case catch erlang:apply(ReturnFun, if is_list(Arguments) -> Arguments; true -> [Arguments] end) of
         {'EXIT', _R} -> ?trace("shit exit~n Arguments = ~w, ReturnFun = ~w ~n reason = ~p~n", [Arguments, ReturnFun, _R]), {ReturnValue, false};
@@ -557,13 +557,13 @@ return_mock_result(ignore, _ModuleName, _FunctionName, _Arity, _Arguments, _Self
   no____mock;
 return_mock_result({return, Value}, ModuleName, FunctionName, Arity, Arguments, Self) -> 
   return_mock_result(Value, ModuleName, FunctionName, Arity, Arguments, Self);
-return_mock_result(Fun, ModuleName, FunctionName, Arity, Arguments, Self) when is_function(Fun, Arity) -> 
+return_mock_result(Fun, ModuleName, FunctionName, Arity, Arguments, Self) when is_function(Fun), is_function(Fun, Arity) -> 
   case catch erlang:apply(Fun, Arguments) of 
     {'EXIT', _E} -> ?trace("error ~p~n", [_E]), no____mock; % if arguments of fun does not match, ignore mocking
     ReturnValue -> auto_complete_return_value(ReturnValue, ModuleName, FunctionName, Arity, Arguments, Self)
   end;
 % allow functions for handle_call mocks that take only the event as argument  
-return_mock_result(Fun, ModuleName, FunctionName = handle_call, Arity = 3, Arguments = [Event, _, _], Self) when is_function(Fun, 1) -> 
+return_mock_result(Fun, ModuleName, FunctionName = handle_call, Arity = 3, Arguments = [Event, _, _], Self) when is_function(Fun), is_function(Fun, 1) -> 
   case catch erlang:apply(Fun, [Event]) of 
     {'EXIT', _E} -> ?trace("error ~p~n", [_E]), no____mock; % if arguments of fun does not match, ignore mocking
     ReturnValue -> auto_complete_return_value(ReturnValue, ModuleName, FunctionName, Arity, Arguments, Self)
