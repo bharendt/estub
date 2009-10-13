@@ -93,7 +93,11 @@
     returns = ignore, %% fun() | term() | ignore: either a function or a fixed return value that should
                       %%    be returned instead of the real function. ignore is only valid when
                       %% assertions are set.
-    assertions = []   %% [#assert_call{}]: the assertions that were made for this function
+    assertions = [],  %% [#assert_call{}]: the assertions that were made for this function
+    not_matching_args = [] %% [arguments()] where arguments = []. List of arguments, with that this
+                      %% function was called but no assertion matched. this is displayed in the error
+                      %% message, if an assertion did not match to be able to see, with part of the
+                      %% arguments did not match
   }).
 
 %% record holding information about for an ?assertCall assertion
@@ -261,10 +265,14 @@ execute__mock__(ModuleName, FunctionName, Arity, Arguments, Self) ->
     false ->
       no____mock;
     % if assertion has stubbed value, return stubbed value from matched assertion and update assertion
-    {value, Stub = #stub {assertions = Assertions = [_|_], returns = StubReturnValue}} -> 
+    {value, Stub = #stub {assertions = Assertions = [_|_], returns = StubReturnValue, not_matching_args = NotMatchingArgs}} -> 
       {ReturnValue, NewAssertions, AssertionMatched} = update_assertions(Assertions, FunctionName, Arity, Arguments),
       % only update assertion if a assertion matched
-      if AssertionMatched -> set_stub(Stub#stub { assertions = NewAssertions}); true -> ok end,
+      if AssertionMatched -> 
+          set_stub(Stub#stub { assertions = NewAssertions}); 
+        true -> 
+          set_stub(Stub#stub { not_matching_args = [Arguments | NotMatchingArgs]})
+      end,
       case ReturnValue of
         % if assertion had no won stub value, return the value from a previous stub (if exist)
         ignore -> return_mock_result(StubReturnValue, ModuleName, FunctionName, Arity, Arguments, Self);
@@ -604,8 +612,8 @@ check_assertions(Stub, [#assert_call{ required_call_count = at_least_once, curre
   check_assertions(Stub, Rest, ok);
 check_assertions(Stub, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required == Current ->
   check_assertions(Stub, Rest, ok);
-check_assertions(Stub, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
-  .erlang:error({assertCalled, [stub_error_info(Stub), {required, Required}, {current, Current}]}),
+check_assertions(Stub = #stub {not_matching_args = NotMatchingArgs}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
+  .erlang:error({assertCalled, [stub_error_info(Stub), {required, Required}, {current, Current}, {not_matching_args, lists:sublist(NotMatchingArgs,5)}]}),
   check_assertions(Stub, Rest, error);
 check_assertions(Stub, [UnknownAssertion | Rest], _Acc) ->
   .erlang:error({unknown_assertion, [stub_error_info(Stub),{assertion, UnknownAssertion}]}),
