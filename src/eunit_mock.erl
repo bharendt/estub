@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/5, check_assertions/0, get_mock_info/1]).
+-export([stub/2, assert_called/4, assert_called/5, check_assertions/0, get_mock_info/1]).
 
 -ifdef(TRACE).
 -define(trace, io:format).
@@ -162,6 +162,14 @@ stub(GenSomethingModule, _ReturnValue) when is_atom(GenSomethingModule) ->
 %%    match() = fun() | term(),
 %%    return() = fun() | term(),
 %%    arguments() = [term()]
+assert_called(Mock, Options, MODULE, LINE) when is_list(Options) ->
+  case lists:keysearch(times, 1, Options) of 
+    {value, {times, Times}} ->
+      assert_called(Mock, Times, lists:keydelete(times, 1, Options), MODULE, LINE);
+    false ->
+      assert_called(Mock, _Times = at_least_once, Options, MODULE, LINE)
+  end.
+
 
 % mock a gen_server or gen_fsm process with regitsered name, and start a fake process if no proces with the registered name is running
 assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) when 

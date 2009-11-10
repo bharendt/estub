@@ -106,16 +106,16 @@ fun_to_stub_record_fail_test() ->
   ?assertMatch({error, local_fun}, fun_to_stub_record(LocalFun)).
   
 get_expected_state_all_test() ->
-  __Times__ = ?once ?inAnyState options___end],  
-  ?assertMatch({inState, all}, get_expected_state(__Options__)).
+  Options = [mock ?once ?inAnyState],  
+  ?assertMatch({inState, all}, get_expected_state(Options)).
 
 get_expected_state_idle_test() ->
-  __Times__ = ?once ?inState(idle) ?with(foo) options___end],  
-  ?assertMatch({inState, idle}, get_expected_state(__Options__)).
+  Options = [mock ?once ?inState(idle) ?with(foo)],  
+  ?assertMatch({inState, idle}, get_expected_state(Options)).
 
 get_expected_state_no_state_test() ->
-  __Times__ = ?once ?with(foo) options___end],  
-  ?assertMatch(false, get_expected_state(__Options__)).
+  Options = [mock ?once ?with(foo)],  
+  ?assertMatch(false, get_expected_state(Options)).
 
   
 find_stub_test() ->
@@ -201,7 +201,7 @@ eunit_test_should_succeed_test() ->
 mocked_module_should_be_recompiled_with_mock_parse_transform_test() ->  
   ?assertCompiledNoStub(mock_dummy),
   ?assertMatch(false, is_mocked(mock_dummy)),
-  ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0, ?once),
+  ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0 ?once),
   ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
@@ -225,33 +225,33 @@ get_mock_info_for_gen_fsm_test() ->
 assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_once_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_one_times_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([1])),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_one_times_arguments_not_as_array_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with(1)),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with(1)),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_one_times_with_two_arguments_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_two/2, ?once ?with([1,2])),
+  ?assertCalled(fun mock_dummy:fun_with_arity_two/2 ?once ?with([1,2])),
   ?assertMatch(fun_with_arity_two, mock_dummy:fun_with_arity_two(1,2)).
 
 assert_called_any_times_once_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?atLeastOnce ?with([1])),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?atLeastOnce ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_any_times_more_calls_test() ->
-  ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?atLeastOnce ?with([1])),
+  ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?atLeastOnce ?with([1])),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(2)),
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
@@ -259,14 +259,14 @@ assert_called_any_times_more_calls_test() ->
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_once_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once)
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_twice_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?twice),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?twice),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -274,7 +274,7 @@ assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_twi
 assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -282,7 +282,7 @@ assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() ->
 assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(Arg) -> Arg + 1000 end)),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(Arg) -> Arg + 1000 end)),
     ?assertMatch(1111, mock_dummy:fun_with_arity_one(111))
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -291,7 +291,7 @@ assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() ->
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_once_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -299,7 +299,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_on
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_twice_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?twice ?with([foo])),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?twice ?with([foo])),
     mock_dummy:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -307,7 +307,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_tw
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_arguments_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?with([foo])),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -315,7 +315,7 @@ assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_a
 assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(_Arg = foo) -> ok end)),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     % stubbed fun should not be invoked here, because stub fun args will not match
     ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(bar)) 
   end,
@@ -324,34 +324,34 @@ assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -
 assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
   ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1, ?once ?andReturn(fun(_Arg = foo) -> ok end)),
+    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     ?assertMatch(ok, mock_dummy:fun_with_arity_one(foo)) 
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
 
 assert_called_start_mocked_local_gen_server_test() ->
-  ?assertCalled({local, storage}, 0 ?times),
+  ?assertCalled({local, storage} ?never),
   ?assert(is_pid(whereis(storage))).
   
 assert_called_start_mocked_global_gen_server_test() ->
-  ?assertCalled({global, storage}, 0 ?times),
+  ?assertCalled({global, storage} ?times(0)),
   ?assert(is_pid(global:whereis_name(storage))).
 
 assert_called_should_succeed_for_mocked_gen_server_that_returns_fun_value_test() ->
-  ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(fun(_) -> ok end)),
+  ?assertCalled({local, storage} ?once ?with({save_record, _}) ?andReturn(fun(_) -> ok end)),
   ?assert(is_pid(whereis(storage))),
   ?assertMatch(ok, gen_server:call(storage, {save_record, foo})).
 
 assert_called_should_succeed_for_mocked_gen_server_that_returns_fixed_value_test() ->
-  ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+  ?assertCalled({local, storage} ?once ?with({save_record, _}) ?andReturn(ok)),
   ?assert(is_pid(whereis(storage))),
   ?assertMatch(ok, gen_server:call(storage, {save_record, foo})).
   
 
 assert_called_should_succeed_for_mocked_local_gen_server_test() ->
   TestFun = fun() ->
-    ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    ?assertCalled({local, storage} ?once ?with({save_record, _}) ?andReturn(ok)),
     ?assertMatch(ok, gen_server:call(storage, {save_record, foo}))
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -359,20 +359,20 @@ assert_called_should_succeed_for_mocked_local_gen_server_test() ->
 
 assert_called_should_fail_for_mocked_local_gen_server_not_called_once_test() ->
   TestFun = fun() ->
-    ?assertCalled({local, storage}, ?once)
+    ?assertCalled({local, storage} ?once)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_mocked_local_gen_server_not_called_once_with_correct_arguements_test() ->
   TestFun = fun() ->
-    ?assertCalled({local, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    ?assertCalled({local, storage} ?once ?with({save_record, _}) ?andReturn(ok)),
     gen_server:call(storage, {store_record, foo})
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_mocked_local_gen_server_not_called_twice_test() ->
   TestFun = fun() ->
-    ?assertCalled({local, storage}, ?twice ?with({save_record, _}) ?andReturn(ok)),
+    ?assertCalled({local, storage} ?twice ?with({save_record, _}) ?andReturn(ok)),
     ?assertMatch(ok, gen_server:call(storage, {save_record, foo}))
   end,
   ?assertMatch(error, eunit:test(TestFun)).
@@ -380,7 +380,7 @@ assert_called_should_fail_for_mocked_local_gen_server_not_called_twice_test() ->
 
 assert_called_should_succeed_for_mocked_global_gen_server_test() ->
   TestFun = fun() ->
-    ?assertCalled({global, storage}, ?once ?with({save_record, _}) ?andReturn(ok)),
+    ?assertCalled({global, storage} ?once ?with({save_record, _}) ?andReturn(ok)),
     ?assertMatch(ok, gen_server:call({global, storage}, {save_record, foo}))
   end,
   ?assertMatch(ok, eunit:test(TestFun)).
@@ -393,8 +393,8 @@ assert_called_should_fail_for_gen_server_with_different_pid_that_was_not_called_
     receive after 100 -> ok end,
     {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
     {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-    ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
-    ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid1 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid2 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
     ?assertMatch(ok, gen_server:call(dummy1, {save_record, foo})),
     gen_server_dummy:stop(Pid1),
     gen_server_dummy:stop(Pid1)
@@ -409,8 +409,8 @@ assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
     receive after 100 -> ok end,
     {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
     {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-    ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
-    ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertCalled(Pid1 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
+    ?assertCalled(Pid2 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, value1, foo})),
     ?assertMatch(value1, gen_server:call(dummy1, {save_record, foo})),
     ?assertMatch(value1, gen_server:call(dummy2, {save_record, foo})),
     gen_server_dummy:stop(Pid1),
@@ -424,7 +424,7 @@ assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
     ?assertMatch(ok, gen_server_dummy:stop(dummy)),
     receive after 100 -> ok end,
     {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-    ?assertCalled(Pid, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
+    ?assertCalled(Pid ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok, foo})),
     ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
     gen_server_dummy:stop(Pid)
   end,
@@ -435,7 +435,7 @@ assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_s
     ?assertMatch(ok, gen_server_dummy:stop(dummy)),
     receive after 100 -> ok end,
     {ok, Pid} = gen_server:start({local, dummy}, gen_server_dummy, [], []),
-    ?assertCalled(Pid, ?once ?with([{save_record, _}, _From, _State]) ?andReturn(ok)),
+    ?assertCalled(Pid ?once ?with([{save_record, _}, _From, _State]) ?andReturn(ok)),
     ?assertMatch(ok, gen_server:call(dummy, {save_record, foo})),
     gen_server_dummy:stop(Pid)
   end,
@@ -443,7 +443,7 @@ assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_s
 
 assert_called_should_return_tuple_test() ->
   ?assertCompiledNoStub(gen_server_dummy),
-  ?assertCalled(fun mock_dummy:fun_with_arity_three/3, ?atLeastOnce ?andReturn({atomic, ok})),
+  ?assertCalled(fun mock_dummy:fun_with_arity_three/3 ?atLeastOnce ?andReturn({atomic, ok})),
   mock_dummy:fun_with_arity_three(foo, foobar, {bar, baz}).
 
 foo_test() ->
@@ -453,8 +453,8 @@ foo_test() ->
   receive after 100 -> ok end,
   {ok, Pid1} = gen_server:start({local, dummy1}, gen_server_dummy, [], []),
   {ok, Pid2} = gen_server:start({local, dummy2}, gen_server_dummy, [], []),
-  ?assertCalled(Pid1, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok1, foo})),
-  ?assertCalled(Pid2, ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok2, foo})),
+  ?assertCalled(Pid1 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok1, foo})),
+  ?assertCalled(Pid2 ?once ?with([{save_record, _}, _From, _State]) ?andReturn({reply, ok2, foo})),
   ?assertMatch(ok1, gen_server:call(dummy1, {save_record, foo})),
   ?assertMatch(ok2, gen_server:call(dummy2, {save_record, foo})),
   gen_server_dummy:stop(Pid1),

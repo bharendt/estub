@@ -348,39 +348,42 @@
 -define(_stub(Fun, ReturnValue), ?_test(?stub(Fun, ReturnValue))).
 
 -ifdef(NOASSERT).
--define(assertCalled(Fun, Requirements), ok).
+-define(assertCalled(_Options), ok).
 -else.
--define(assertCalled(Fun, Requirements),
+-define(assertCalled(Options),
 	((fun () ->
-	  __Times__ = Requirements options___end],
-	  case (eunit_mock:assert_called(Fun, __Times__, __Options__, ?MODULE, ?LINE)) of
+	  __ALL_OPTIONS__ = [Options],
+	  [__FUN__ | __OPTIONS__] = __ALL_OPTIONS__,
+	  case (eunit_mock:assert_called(__FUN__, __OPTIONS__, ?MODULE, ?LINE)) of
 		  ok -> ok;
 		  __V -> .erlang:error({assertCalled_failed,
 				      [{module, ?MODULE},
 				       {line, ?LINE},
-				       {function, (??Fun)},
-				       {requirements, (??Requirements)},
+				       {assertion, (??Options)},
 				       {value, __V}]})
 	    end
 	  end)())).
 -endif.
--define(_assertCalled(Fun, Requirements), ?_test(?assertCalled(Fun, Requirements))).
+-define(_assertCalled(Options), ?_test(?assertCalled(Options))).
 
--define(once, 1, __Options__ = [).
--define(twice, 2, __Options__ = [).
--define(atLeastOnce, at_least_once, __Options__ = [).
--define(times, , __Options__ = [).
--define(with(Args),{with, fun(__Value__) -> % this check is done by calling this fun with the arguments, the stubbed fun was called with as array
+
+
+-define(never, ,{times, 0}).
+-define(once, ,{times, 1}).
+-define(twice, ,{times, 2}).
+-define(atLeastOnce,  ,{times, at_least_once}).
+-define(times(Times), ,{times, Times}).
+-define(with(Args), ,{with, fun(__Value__) -> % this check is done by calling this fun with the arguments, the stubbed fun was called with as array
                               case __Value__ of 
                                   Args -> did___match;
                                   [Args] -> did___match; % if args are not given as array if fun is of arity one
                                   _ -> did___not__match 
                               end 
-                          end, ??Args},).
--define(andShouldReturn(ExpectedResult),{andShouldReturn, fun(ExpectedResult) -> did___match end, ??ExpectedResult},).
--define(andReturn(ReturnValue),{andReturn, ReturnValue, ??ReturnValue},).
--define(inState(StateName),{inState, StateName},).
--define(inAnyState,{inState, all},).
+                          end, ??Args}).
+-define(andShouldReturn(ExpectedResult), ,{andShouldReturn, fun(ExpectedResult) -> did___match end, ??ExpectedResult}).
+-define(andReturn(ReturnValue), ,{andReturn, ReturnValue, ??ReturnValue}).
+-define(inState(StateName), ,{inState, StateName}).
+-define(inAnyState, ,{inState, all}).
 
 -define(mock(GenServerModule, GenServerStartFun, GenServerStartFunArgs),ok).
 -define(assertCalledWith(Fun, Times, Arguments), ?_test(?assertCalledWith(Fun, Times, Arguments))).
