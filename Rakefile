@@ -21,7 +21,7 @@ ERLC_FLAGS = "+debug_info -W2 -I ../include -o ../ebin -pa ../ebin -pa ../ebin/m
 
 desc "Compiles all files and writes the binaries to ./ebin"
 task :build do
-  modules = ENV['MOD'] ? "#{ENV['MOD']}.erl" : "util.erl *.erl"
+  modules = ENV['MOD'] ? "#{ENV['MOD']}.erl" : "eunit_util.erl *.erl"
   cd "src"
   sh "erlc  #{ERLC_FLAGS} -v #{modules}"
   cd ".."
@@ -29,7 +29,7 @@ end
 
 desc "Compiles all files including test definition and writes the binaries to ./ebin"
 task :build_test do
-  modules = ENV['MOD'] ? "#{ENV['MOD']}.erl" : "util.erl *.erl"
+  modules = ENV['MOD'] ? "#{ENV['MOD']}.erl" : "eunit_util.erl *.erl"
   cd "src"
   sh "erlc  #{ERLC_FLAGS} #{ERLC_TEST_FLAGS} -v #{modules}"
   cd ".."

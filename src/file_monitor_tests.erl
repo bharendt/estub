@@ -148,7 +148,7 @@ file_event_test_() ->
 			      {Server, Path, Ref}
 		      end,
 		      fun ({_, Path, _}) -> remove_file(Path) end,
-		      fun ({Server, Path0, Ref}=X) ->
+		      fun ({_Server, Path0, Ref}=X) ->
 			      [{with, X,
 				[fun create_file_subtest/1,
 				 fun delete_file_subtest/1,

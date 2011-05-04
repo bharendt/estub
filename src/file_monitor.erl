@@ -112,6 +112,10 @@
 
 -behaviour(gen_server).
 
+-compile({no_auto_import,[demonitor/2]}).
+-compile({no_auto_import,[min/2]}).
+-compile({no_auto_import,[max/2]}).
+
 -export([monitor_file/1, monitor_file/2, monitor_file/3, monitor_dir/1,
 	 monitor_dir/2, monitor_dir/3, automonitor/1, automonitor/2,
 	 automonitor/3, demonitor/1, demonitor/2, demonitor_file/2,
@@ -1055,15 +1059,15 @@ diff_lists([], []) ->
 %% more detail above, and 'file_monitor' is the name of this module.
 
 cast(Msg, Monitors, St) ->
-    sets:fold(fun (Ref, Msg) ->
+    sets:fold(fun (Ref, Ms) ->
 		      case dict:find(Ref, St#state.refs) of
 			  {ok, #monitor_info{pid = Pid, auto = Auto}} ->
 			      Pid ! {?MSGTAG, Ref, Msg},
 			      case Auto of
-				  true -> self() ! {?MSGTAG, Ref, Msg};
+				  true -> self() ! {?MSGTAG, Ref, Ms};
 				  false -> ok
 			      end
 		      end,
-		      Msg  % note that this is a fold, not a map
+		      Ms  % note that this is a fold, not a map
 	      end,
 	      Msg, Monitors).

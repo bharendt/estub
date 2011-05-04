@@ -211,10 +211,10 @@ monitor_objs(Path, Files, St) ->
     ObjExt = file:objfile_extension(),
     Objs = [F || {added, F} <- Files, filename:extension(F) =:= ObjExt],
     lists:foldl(
-      fun (F, St) ->
+      fun (F, Sta) ->
 	      F1 = filename:absname(filename:join(Path, F)),
 	      %%erlang:display({autoload_monitoring, file, F1}),
-	      monitor_file(F1, Opts, St)
+	      monitor_file(F1, Opts, Sta)
       end,
       St,
       Objs).

@@ -1,4 +1,4 @@
--module(util).
+-module(eunit_util).
 -author(bharendt).
 
 -export([refresh/1, refresh/2, refresh_test/1, refresh_trace/1]).

@@ -27,6 +27,8 @@
 
 -export([main/1]).    %% private
 
+-compile({no_auto_import,[monitor/2]}).
+-compile({no_auto_import,[demonitor/2]}).
 
 -define(SERVER, code_monitor).
 
@@ -117,7 +119,7 @@ main({Name, Listeners}) ->
     end.
 
 cast(M, Listeners) ->
-    sets:fold(fun (L, M) -> L ! M end, {code_monitor, M}, Listeners).
+    sets:fold(fun (L, Mo) -> L ! Mo end, {code_monitor, M}, Listeners).
 
 
 %% code server spy process using generic wiretap functionality

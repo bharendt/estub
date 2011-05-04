@@ -1,4 +1,5 @@
 -module(test_module).
+-compile(nowarn_unused_function).
 
 -ifdef(TEST).
   -include("test/test_module_test.erl").
