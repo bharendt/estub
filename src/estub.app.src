@@ -1,6 +1,6 @@
 % This is an -*- erlang -*- file.
 
-{application, eunit,
+{application, estub,
  [{description, "EUnit"},
   {vsn, "0.2.1"},
   {modules, [eunit,
