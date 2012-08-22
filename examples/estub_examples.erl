@@ -7,7 +7,7 @@
 %% @copyright 2005 Richard Carlsson
 %% @private
 
--module(eunit_examples).
+-module(estub_examples).
 
 -compile(export_all).
 

@@ -6,13 +6,13 @@
 fun_with_arity_zero() ->
   fun_with_arity_zero.
   
-fun_with_arity_one(Arg) ->
+fun_with_arity_one(_Arg) ->
   fun_with_arity_one.
   
-fun_with_arity_two(Arg1, Arg2) ->
+fun_with_arity_two(_Arg1, _Arg2) ->
   fun_with_arity_two.
 
-fun_with_arity_three(Arg1, Arg2, Arg3) ->
+fun_with_arity_three(_Arg1, _Arg2, _Arg3) ->
   fun_with_arity_tree.
   
   

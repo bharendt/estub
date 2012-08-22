@@ -1,20 +1,14 @@
 % This is an -*- erlang -*- file.
 
 {application, estub,
- [{description, "EUnit"},
-  {vsn, "0.2.1"},
-  {modules, [eunit,
-	     eunit_autoexport,
-	     eunit_data,
-	     eunit_lib,
-	     eunit_listener,
-	     eunit_proc,
-	     eunit_serial,
-	     eunit_server,
-	     eunit_striptests,
-	     eunit_surefire,
-	     eunit_test,
-	     eunit_tty]},
+ [{description, "Stubbing and Mocking Extension for EUnit"},
+  {vsn, "0.3"},
+  {modules, [
+    estub_mock.erl,
+    estub_mocked_gen_fsm.erl,
+    estub_mocked_gen_server.erl,
+    estub_util.erl
+  ]},
   {registered,[]},
   {applications, [stdlib]},
   {env, []}]}.

@@ -1,7 +1,7 @@
 %% @author Bertram Harendt <bertram@sauspiel.de>
 %%
 %% @doc This module represents that a mocked gen_server.
--module(eunit_mocked_gen_server).
+-module(estub_mocked_gen_server).
 -behaviour(gen_server).
 -author(bharendt).
 -mocked(true).

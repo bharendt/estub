@@ -1,6 +1,6 @@
 
--include_lib("include/eunit.hrl").
-
+-include_lib("eunit/include/eunit.hrl").
+-include_lib("estub/include/estub.hrl").
 
 %% makes sure that a module is compiled
 -define(assertCompiled(__Module__), fun(_Module__) -> 

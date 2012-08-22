@@ -20,7 +20,7 @@
 %% @author Bertram Harendt <bertram@sauspiel.de>
 %%
 %% @doc This module <em>transforms all functions of a module</em>  that is compiled
-%% with the compile options <code>-compile({parse_transform, eunit_mock})</code> so
+%% with the compile options <code>-compile({parse_transform, estub})</code> so
 %% that the <em>function executes the mock</em> that is used in a eunit test case
 %% <em>instead of the real function code.</em> If mocking is not used, the original
 %% code of the function is executed.<br/>All functions of the compiled module are transformed
@@ -35,7 +35,7 @@
 %% <b>To:</b><br/>
 %% <pre>
 %%  fun_that_can_be_mocked(__Arg1__ = Arg1, __Arg2__ = [Arg2 | _]) ->
-%%    case eunit_mock:execute__mock__(?MODULE, mocked_fun, 2, [__Arg1__, __Arg2__], self()) of
+%%    case estub:execute__mock__(?MODULE, mocked_fun, 2, [__Arg1__, __Arg2__], self()) of
 %%      no____mock ->
 %%        io:format("executing unmocked_fun/2~n"),
 %%        if Arg1 > Arg2 -> 'unmocked_fun/2:true';
@@ -43,11 +43,11 @@
 %%      __Mocked___Result__ -> __Mocked___Result__
 %%    end.
 %% </pre>
-%% <code>eunit_mock:execute__mock__/5</code> returns the result of the mock if mocking is used, otherwise
+%% <code>estub:execute__mock__/5</code> returns the result of the mock if mocking is used, otherwise
 %% it returns the atom <code>no____mock</code> and the original function code is executed.<br/><br/>
 %% When transformed, the functions can be mocked like this:
 %% <pre>
-%%  % compile module 'coding' with option {parse_transform, eunit_mock}
+%%  % compile module 'coding' with option {parse_transform, estub}
 %%  -module(coding).
 %%  get_coolest_language(List) -> 
 %%    hd(List).
@@ -55,14 +55,14 @@
 %%  % execute unmocked function
 %%  Ruby = coding:get_coolest_language([ruby, erlang, java, cpp]). % = ruby
 %%  % mock function
-%%  eunit_mock:mock(_Module = coding, _FunName = get_coolest_language, _Arity = 1, _MockFun = fun(List) -> erlang end), 
+%%  estub:mock(_Module = coding, _FunName = get_coolest_language, _Arity = 1, _MockFun = fun(List) -> erlang end), 
 %%  % no we get mocked result:
 %%  Erlang = coding:get_coolest_language([ruby, erlang, java, cpp]). % = erlang
 %% </pre><br/>
 %% This module is based on the <code>erl_id_trans</code> module from the std erlang library that
 %% traverses legal Erlang code. 
 %% See <a href="http://erlang.org/doc/man/erl_id_trans.html">http://erlang.org/doc/man/erl_id_trans.html</a>.
--module(eunit_mock).
+-module(estub).
 -behaviour(gen_server).
 -author(bharendt).
 
@@ -111,7 +111,7 @@
   }).
 
 -ifdef(TEST).
-  -include("test/eunit_mock_test.erl").
+  -include("test/estub_test.erl").
 -endif.
 
 
@@ -186,9 +186,9 @@ assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) whe
       undefined ->
         case get_expected_state(Options) of
           false -> % start faked gen_server process
-            gen_server:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_server, [RegisteredName], []);
+            gen_server:start({GlobalOrLocal, RegisteredName}, stub_mocked_gen_server, [RegisteredName], []);
           {inState, _StateName} -> % start faked gen_fsm process
-            gen_fsm:start({GlobalOrLocal, RegisteredName}, eunit_mocked_gen_fsm, [RegisteredName], [])
+            gen_fsm:start({GlobalOrLocal, RegisteredName}, stub_mocked_gen_fsm, [RegisteredName], [])
         end;
       ExistingPid ->
         {ok, ExistingPid}                                                       
@@ -493,7 +493,7 @@ recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
     CompileInfo when is_list(CompileInfo) ->
       {value, {options, CompileOptions}} = lists:keysearch(options, 1, CompileInfo),
       {value, {source, SourcePath}} = lists:keysearch(source, 1, CompileInfo),
-      case compile:file(SourcePath, [{parse_transform, eunit_mock} | CompileOptions]) of 
+      case compile:file(SourcePath, [{parse_transform, estub} | CompileOptions]) of 
         {ok, ModuleName} ->
           code:purge(ModuleName),
           case code:load_file(ModuleName) of
@@ -673,7 +673,7 @@ get_expected_state(Options) when is_list(Options) ->
 
 
 %% @doc transforms all function of a module that is compiled with the compile option
-%% <code>-compile({parse_transform, eunit_mock})</code> so that they can be mocked
+%% <code>-compile({parse_transform, estub})</code> so that they can be mocked
 %% and return the result of the mock function instead of the real function.
 parse_transform(Forms, _Options) ->
     forms(insert_mocked_atrribute(Forms), Forms).
@@ -750,7 +750,7 @@ transform_mock_args(Args, LineNumber) when is_list(Args) ->
 trasform_mock_content(Content, LineNumber, ModuleToMock, FunToMock, Arity) ->
   [{'case',LineNumber,
     {call,LineNumber,
-     {remote,LineNumber,{atom,LineNumber,eunit_mock},{atom,LineNumber,execute__mock__}},
+     {remote,LineNumber,{atom,LineNumber,estub},{atom,LineNumber,execute__mock__}},
      [{atom,LineNumber,ModuleToMock},
       {atom,LineNumber,FunToMock},
       {integer,LineNumber,Arity},

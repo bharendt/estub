@@ -1,5 +1,6 @@
 
--include_lib("include/eunit.hrl").
+-include_lib("eunit/include/eunit.hrl").
+-include_lib("estub/include/estub.hrl").
 
 
 assert_called_should_stub_local_function_test() ->

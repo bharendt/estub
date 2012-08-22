@@ -16,7 +16,7 @@
 %% 
 %% %CopyrightEnd%
 %%
--module(eunit_mocked_gen_fsm).
+-module(estub_mocked_gen_fsm).
 -behaviour(gen_fsm).
 -mocked(true).
 
