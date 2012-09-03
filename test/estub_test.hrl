@@ -2,62 +2,21 @@
 -include_lib("eunit/include/eunit.hrl").
 -include_lib("estub/include/estub.hrl").
 
-%% makes sure that a module is compiled
--define(assertCompiled(__Module__), fun(_Module__) -> 
-  case code:ensure_loaded(_Module__) of
-    {module, _Module__} -> ok;
-    {error, _} -> ?assertMatch(ok, util:refresh(_Module__, [{source_dir, "test/fixtures/"}]))
-  end
-  end(__Module__)).
-
-
-%% makes sure that a module is compiled without parse transform
--define(assertCompiledNoStub(__Module__), fun(_Module__) -> 
-  ShouldCompile = case code:ensure_loaded(_Module__) of
-    {module, _Module__} -> is_mocked(_Module__);
-    {error, _} -> true
-  end,
-  if ShouldCompile ->
-      ?assertMatch(ok, util:refresh(_Module__, [{source_dir, "test/fixtures/"}]));
-    true -> ok
-  end
-  end(__Module__)).
-
 
 %%----------------------------------------------------
 %% tests for mocked functions
 %%----------------------------------------------------
 
 apply_parse_transform_should_set_mocked_attribute_test() ->
-  ?assertMatch(ok, util:refresh(mock_dummy, [{source_dir, "test/fixtures/"}, {parse_transform, eunit_mock}])),
   ?assertMatch({value,{mocked,[true]}}, lists:keysearch(mocked, 1, mock_dummy:module_info(attributes))).
 
-standart_module_should_not_have_mocked_attribute_test() ->
-  ?assertCompiledNoStub(mock_dummy),
-  ?assertMatch(false, lists:keysearch(mocked, 1, mock_dummy:module_info(attributes))).
+estub_mocked_gen_server_should_appear_as_mocked_module_test() ->  
+  ?assertMatch(true, is_mocked(estub_mocked_gen_server)).
 
-standart_module_should_return_normal_value_test() ->
-  ?assertCompiledNoStub(mock_dummy),
-  ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()).
-  
-recompile_with_mocking_parse_transform_test() ->  
-  ?assertCompiledNoStub(mock_dummy),
-  ?assertMatch(false, is_mocked(mock_dummy)),
-  ?assertMatch(ok, recompile_for_mocking(mock_dummy)),
-  ?assertMatch({value,{mocked,[true]}}, lists:keysearch(mocked, 1, mock_dummy:module_info(attributes))),
-  ?assertMatch(true, is_mocked(mock_dummy)).
-
-eunit_mocked_gen_server_should_appear_as_mocked_module_test() ->  
-  ?assertMatch(ok, util:refresh(eunit_mocked_gen_server)),
-  ?assertMatch(true, is_mocked(eunit_mocked_gen_server)).
-
-eunit_mocked_gen_fsm_should_appear_as_mocked_module_test() ->  
-  ?assertMatch(ok, util:refresh(eunit_mocked_gen_fsm)),
-  ?assertMatch(true, is_mocked(eunit_mocked_gen_fsm)).
+estub_mocked_gen_fsm_should_appear_as_mocked_module_test() ->  
+  ?assertMatch(true, is_mocked(estub_mocked_gen_fsm)).
   
 stubbed_module_should_be_recompiled_with_mock_parse_transform_test() ->  
-  ?assertCompiledNoStub(mock_dummy),
-  ?assertMatch(false, is_mocked(mock_dummy)),
   ?stub(_Fun = fun mock_dummy:fun_with_arity_zero/0, _Return = stubbed_value),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
@@ -70,7 +29,6 @@ stubbed_module_should_return_stubbed_value_from_fun_test() ->
   ?assertMatch(stubbed_value, mock_dummy:fun_with_arity_zero()).
 
 standart_module_with_different_clauses_should_return_normal_value__test() ->
-  ?assertCompiledNoStub(mock_dummy),
   ?assertMatch(fun_with_differenct_clauses_1, mock_dummy:fun_with_differenct_clauses(1)),
   ?assertMatch(fun_with_differenct_clauses_2, mock_dummy:fun_with_differenct_clauses(2)),
   ?assertMatch(fun_with_differenct_clauses_3, mock_dummy:fun_with_differenct_clauses(3)).  
@@ -198,32 +156,35 @@ eunit_test_should_succeed_test() ->
   TestFun = fun() -> ?assertMatch(true, true) end,
   ?assertMatch(ok, eunit:test(TestFun)).
 
-mocked_module_should_be_recompiled_with_mock_parse_transform_test() ->  
-  ?assertCompiledNoStub(mock_dummy),
-  ?assertMatch(false, is_mocked(mock_dummy)),
-  ?assertCalled(_Fun = fun mock_dummy:fun_with_arity_zero/0 ?once),
-  ?assertMatch(fun_with_arity_zero, mock_dummy:fun_with_arity_zero()),
+mocked_module_should_return_stubbed_value_test() ->  
+  ?assertMatch(stubbed_value, mock_dummy:fun_with_arity_zero()),
   ?assertMatch(true, is_mocked(mock_dummy)).
   
 get_mock_info_for_gen_server_test() ->
-  StartResult = gen_server:start({local, dummy}, eunit_mocked_gen_server, [dummy], []),
+  StartResult = gen_server:start({local, dummy}, estub_mocked_gen_server, [dummy], []),
   ?assertMatch({ok, _}, StartResult),
   {ok, Pid} = StartResult,
-  ?assertMatch({eunit_mocked_gen_server, gen_server, true}, get_mock_info(Pid)),
-  ?assertMatch(ok, eunit_mocked_gen_server:stop(Pid)),
+  ?assertMatch({estub_mocked_gen_server, gen_server, true}, get_mock_info(Pid)),
+  ?assertMatch(ok, estub_mocked_gen_server:stop(Pid)),
   ?assertMatch(undefined, whereis(dummy)).
 
 get_mock_info_for_gen_fsm_test() ->
-  StartResult = gen_fsm:start({local, dummy}, eunit_mocked_gen_fsm, [dummy], []),
+  StartResult = gen_fsm:start({local, dummy}, estub_mocked_gen_fsm, [dummy], []),
   ?assertMatch({ok, _}, StartResult),
   {ok, Pid} = StartResult,
-  ?assertMatch({eunit_mocked_gen_fsm, gen_fsm, true}, get_mock_info(Pid)),
-  ?assertMatch(ok, eunit_mocked_gen_fsm:stop(Pid)),
+  ?assertMatch({estub_mocked_gen_fsm, gen_fsm, true}, get_mock_info(Pid)),
+  ?assertMatch(ok, estub_mocked_gen_fsm:stop(Pid)),
   ?assertMatch(undefined, whereis(dummy)).
 
   
-assert_called_should_succeed_for_unstubbed_fun_and_ignored_arguments_test() -> 
-  ?assertCompiled(mock_dummy),
+assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_test() -> 
+  TestFun = fun() ->
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?once),
+    mock_dummy_no_parse_transform:fun_with_arity_one(foo)
+  end,
+  ?assertMatch(error, eunit:test(TestFun)).
+
+assert_called_should_succeed_for_stubbed_fun_test() -> 
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once),
     mock_dummy:fun_with_arity_one(foo)
@@ -257,22 +218,19 @@ assert_called_any_times_more_calls_test() ->
   ?assertMatch(fun_with_arity_one, mock_dummy:fun_with_arity_one(1)).
 
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_once_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once)
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?once)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_unstubbed_fun_and_ignored_arguments_not_called_twice_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?twice),
-    mock_dummy:fun_with_arity_one(foo)
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?twice),
+    mock_dummy_no_parse_transform:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
     mock_dummy:fun_with_arity_one(foo)
@@ -280,7 +238,6 @@ assert_called_should_succeed_for_unstubbed_fun_and_expected_arguments_test() ->
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(Arg) -> Arg + 1000 end)),
     ?assertMatch(1111, mock_dummy:fun_with_arity_one(111))
@@ -289,31 +246,27 @@ assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_test() ->
 
 
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_once_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
-    mock_dummy:fun_with_arity_one(bar)
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?once ?with([foo])),
+    mock_dummy_no_parse_transform:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_not_called_twice_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?twice ?with([foo])),
-    mock_dummy:fun_with_arity_one(foo)
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?twice ?with([foo])),
+    mock_dummy_no_parse_transform:fun_with_arity_one(foo)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_unstubbed_fun_and_expected_arguments_no_matching_arguments_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
-    ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?with([foo])),
-    mock_dummy:fun_with_arity_one(bar)
+    ?assertCalled(fun mock_dummy_no_parse_transform:fun_with_arity_one/1 ?once ?with([foo])),
+    mock_dummy_no_parse_transform:fun_with_arity_one(bar)
   end,
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     % stubbed fun should not be invoked here, because stub fun args will not match
@@ -322,7 +275,6 @@ assert_called_should_fail_for_stubbed_fun_and_expected_arguments_in_fun_test() -
   ?assertMatch(error, eunit:test(TestFun)).
 
 assert_called_should_succeed_for_stubbed_fun_and_expected_arguments_in_fun_test() -> 
-  ?assertCompiled(mock_dummy),
   TestFun = fun() ->
     ?assertCalled(fun mock_dummy:fun_with_arity_one/1 ?once ?andReturn(fun(_Arg = foo) -> ok end)),
     ?assertMatch(ok, mock_dummy:fun_with_arity_one(foo)) 
@@ -386,7 +338,6 @@ assert_called_should_succeed_for_mocked_global_gen_server_test() ->
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_should_fail_for_gen_server_with_different_pid_that_was_not_called_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
     ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
     ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
@@ -402,7 +353,6 @@ assert_called_should_fail_for_gen_server_with_different_pid_that_was_not_called_
   ?assertMatch(error, eunit:test(TestFun)).
   
 assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
     ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
     ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
@@ -419,7 +369,6 @@ assert_called_should_succeed_for_gen_server_with_different_pids_called_test() ->
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_should_succeed_for_mocked_existing_gen_server_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
   TestFun = fun() ->
     ?assertMatch(ok, gen_server_dummy:stop(dummy)),
     receive after 100 -> ok end,
@@ -442,12 +391,10 @@ assert_called_should_succeed_for_mocked_gen_server_pid_with_auto_corrected_gen_s
   ?assertMatch(ok, eunit:test(TestFun)).
 
 assert_called_should_return_tuple_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
   ?assertCalled(fun mock_dummy:fun_with_arity_three/3 ?atLeastOnce ?andReturn({atomic, ok})),
   mock_dummy:fun_with_arity_three(foo, foobar, {bar, baz}).
 
 foo_test() ->
-  ?assertCompiledNoStub(gen_server_dummy),
   ?assertMatch(ok, gen_server_dummy:stop(dummy1)),
   ?assertMatch(ok, gen_server_dummy:stop(dummy2)),
   receive after 100 -> ok end,

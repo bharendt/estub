@@ -111,7 +111,7 @@
   }).
 
 -ifdef(TEST).
-  -include("test/estub_test.erl").
+  -include("test/estub_test.hrl").
 -endif.
 
 
@@ -126,7 +126,7 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
         _Error = {error, Error} -> Error;
         Stub = #stub{module_name = ModuleName} ->
           WasCompiledWithMocking = case is_mocked(ModuleName) of
-            false -> recompile_for_mocking(ModuleName);
+            false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
             true -> ok
           end,
           case WasCompiledWithMocking of
@@ -206,7 +206,7 @@ assert_called(GenSomethingPid, Times, Options, MODULE, LINE) when
   case get_mock_info(GenSomethingPid) of
     {GenServerModuleName, Behaviour, IsMocked} ->
       WasCompiledWithMocking = case IsMocked of
-        false -> recompile_for_mocking(GenServerModuleName);
+        false -> .erlang:error({missing_parse_transform, [{module, GenServerModuleName}, {parse_transform, estub}]});
         true -> ok
       end,
       case WasCompiledWithMocking of
@@ -248,7 +248,7 @@ assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock),
     _Error = {error, Error} -> Error;
     Stub = #stub{module_name = ModuleName, fun_name = FunName, arity = Arity} ->
       WasCompiledWithMocking = case is_mocked(ModuleName) of
-        false -> recompile_for_mocking(ModuleName);
+        false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
         true -> ok
       end,
       case WasCompiledWithMocking of
@@ -488,24 +488,6 @@ is_mocked(ModuleName) when is_atom(ModuleName) ->
     {value,{mocked,[true]}} -> true
   end.
   
-recompile_for_mocking(ModuleName) when is_atom(ModuleName) ->
-  case ModuleName:module_info(compile) of
-    CompileInfo when is_list(CompileInfo) ->
-      {value, {options, CompileOptions}} = lists:keysearch(options, 1, CompileInfo),
-      {value, {source, SourcePath}} = lists:keysearch(source, 1, CompileInfo),
-      case compile:file(SourcePath, [{parse_transform, estub} | CompileOptions]) of 
-        {ok, ModuleName} ->
-          code:purge(ModuleName),
-          case code:load_file(ModuleName) of
-            {module, ModuleName} ->
-              ok;
-            ReloadError -> {error, ReloadError}
-          end;
-        CompileError -> {error, CompileError}
-      end;
-    Error -> {error, Error}
-  end.
-
 % special case for handle_call funs, because they can also have only one argument matching the event
 check_match({_, Fun, _}, Found = [Event, _From, _State], _FunctionName = handle_call, _Arity = 3) when is_function(Fun), is_function(Fun, 1) ->
   case 

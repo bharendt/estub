@@ -1,8 +1,7 @@
 
--module(mock_dummy).
+-module(mock_dummy_no_parse_transform).
 -export([fun_with_arity_zero/0, fun_with_arity_one/1, fun_with_arity_two/2, fun_with_arity_three/3]).
 -export([fun_with_differenct_clauses/1]).
--compile([{parse_transform, estub}]).
 
 fun_with_arity_zero() ->
   fun_with_arity_zero.
