@@ -15,8 +15,7 @@ fun_with_arity_two(_Arg1, _Arg2) ->
 
 fun_with_arity_three(_Arg1, _Arg2, _Arg3) ->
   fun_with_arity_tree.
-  
-  
+    
 fun_with_differenct_clauses(Arg) when Arg == 1 ->
   fun_with_differenct_clauses_1;  
 fun_with_differenct_clauses(Arg) when Arg == 2 ->

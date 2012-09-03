@@ -70,7 +70,7 @@
 -export([execute__mock__/5]).
 -export([init/1, handle_call/3, handle_cast/2, 
          handle_info/2, terminate/2, code_change/3]).
--export([stub/2, assert_called/4, assert_called/5, check_assertions/0, get_mock_info/1]).
+-export([stub/2, assert_called/4, assert_called/5, clean_assertions/0, check_assertions/0, get_mock_info/1]).
 
 -ifdef(TRACE).
 -define(trace, io:format).
@@ -308,7 +308,11 @@ add_assert_call(Stub = {gen_server, _GlobalOrLocal, _Pid, _CallOrCast}, Assertio
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}}).
 
 
+clean_assertions() ->
+  io:format("cleaning assertions...").
+
 check_assertions() ->
+  io:format("checking assertions..."),
   case global:whereis_name(?MODULE) of
     undefined -> ok; % assume that no assertions were made if server is not running
     Pid -> 
@@ -658,7 +662,7 @@ get_expected_state(Options) when is_list(Options) ->
 %% <code>-compile({parse_transform, estub})</code> so that they can be mocked
 %% and return the result of the mock function instead of the real function.
 parse_transform(Forms, _Options) ->
-    forms(insert_mocked_atrribute(Forms), Forms).
+  forms(insert_mocked_atrribute(Forms), Forms).
 
 insert_mocked_atrribute(Forms) ->
   lists:foldr(
@@ -701,10 +705,13 @@ form({attribute,Line,Attr,Val}, _Forms) ->		%The general attribute.
 form({function,Line,Name0,Arity0,Clauses0}, Forms) ->
     NewClauses = case Clauses0 of
       FunClauses = [{clause, LineNumber, Args, Guards, _Content} | _] when is_integer(LineNumber), is_list(Args), is_list(Guards), Name0 =/= execute__mock__ -> 
-        ?trace("mocking function ~w/~w~n", [Name0, Arity0]),
+        ?trace("transforming function ~w/~w~n", [Name0, Arity0]),
         ModuleName = get_module_name(Forms),
-        [transform_mock_fun(CurLineNumber, ModuleName, Name0, CurArgs, CurGuards, CurContent) || {clause, CurLineNumber, CurArgs, CurGuards, CurContent} <- FunClauses];
-      _ -> ?trace("not mocking function ~w/~w~n", [Name0, Arity0]), Clauses0
+        [case is_test_fun(Name0, Arity0) of
+            true  -> transform_test_fun(CurLineNumber, ModuleName, Name0, CurArgs, CurGuards, CurContent);
+            false -> transform_mock_fun(CurLineNumber, ModuleName, Name0, CurArgs, CurGuards, CurContent)
+         end || {clause, CurLineNumber, CurArgs, CurGuards, CurContent} <- FunClauses];
+      _ -> ?trace("not stransforming function ~w/~w~n", [Name0, Arity0]), Clauses0
     end,
     {Name,Arity,Clauses} = function(Name0, Arity0, NewClauses),
     {function,Line,Name,Arity,Clauses};
@@ -721,6 +728,24 @@ get_module_name([]) -> {error, module_name_not_found};
 get_module_name([{attribute,_Line,module,ModuleName} | _]) -> ModuleName;
 get_module_name([_ | Rest]) -> get_module_name(Rest).
 
+%% @doc checks whether the fun is an eunit test fun. that means that the name ends with "_test" and
+%%      its of arity 0.
+-spec is_test_fun(FunName::atom(), Arity::integer()) -> boolean().
+is_test_fun(FunName, _Arity = 0) when is_atom(FunName) ->
+  case string:right(atom_to_list(FunName), 5) of
+    "_test" -> true;
+    _       -> false
+  end;
+is_test_fun(_FunName, _Arity) ->
+  false.
+
+%% @doc transforms a test fun, so that it checks the mocking and stubbing results before exiting
+-spec transform_test_fun(LineNumber::integer(), ModuleName::atom(), FunName::atom(), Args::list(), Guards::list(), Content::list()) -> {clause, LineNumber::integer(), TransformedArgs::list(), Gurads::list(), TransformedContent::list()}.
+transform_test_fun(LineNumber, _ModuleName, _FunName, Args, Guards, Content) when is_integer(LineNumber), is_list(Args), is_list(Guards) ->
+  {clause, LineNumber, Args, Guards, transform_test_content(Content, LineNumber)}.
+
+%% @doc transforms a mocked fun, so that it returns the expected result.
+-spec transform_mock_fun(LineNumber::integer(), ModuleName::atom(), FunName::atom(), Args::list(), Guards::list(), Content::list()) -> {clause, LineNumber::integer(), TransformedArgs::list(), Gurads::list(), TransformedContent::list()}.
 transform_mock_fun(LineNumber, ModuleName, FunName, Args, Guards, Content) when is_integer(LineNumber), is_list(Args), is_list(Guards) -> 
   {clause, LineNumber, transform_mock_args(Args, LineNumber), Guards, trasform_mock_content(Content, LineNumber, ModuleName, FunName, length(Args))}.
 
@@ -746,6 +771,38 @@ trasform_mock_content(Content, LineNumber, ModuleToMock, FunToMock, Arity) ->
       [{var,LineNumber,'__Mocked___Result__'}],
       [],
       [{var,LineNumber,'__Mocked___Result__'}]}]}].
+  
+%% @doc transforms the content of an eunit test fun xxx_test/0 and adds to the and a call
+%%      to eunit_mock:check_assertions() that verifies that the estub makros were successful.      
+%%      a test function like that:
+%%
+%%      foo_test() ->
+%%        ?assertMatch(foo, bar).
+%%        
+%%      is converted to that:
+%%
+%%      foo_test() ->
+%%        estub:clean_assertions(),
+%%        try begin
+%%          ?assertMatch(foo, bar)
+%%        end of
+%%          __TestResult__ -> __TestResult__
+%%        after
+%%          estub:check_assertions()
+%%        end.
+transform_test_content(Content, LineNumber) -> 
+  [{call,LineNumber,{remote,LineNumber,{atom,LineNumber,estub},{atom,LineNumber,clean_assertions}},[]}, %% estub:clean_assertions(),
+   {'try',LineNumber, % try
+     [{block,LineNumber, Content}], %% begin [Content] end 
+     [{clause,LineNumber, % of 
+          %%  __TestResult__ -> __TestResult__
+          [{var,LineNumber,'__TestResult__'}], [], [{var,LineNumber,'__TestResult__'}]
+      }],
+     [], %% after
+     [{call,LineNumber, %% estub:check_assertions()
+          {remote,LineNumber,{atom,LineNumber,estub},{atom,LineNumber,check_assertions}}, []}]
+   } %% /try
+  ].
 
 create_mock_execute_aguments(_NumArguments = 0, LineNumber) ->
   {nil,LineNumber};

@@ -14,6 +14,9 @@ assert_called_should_stub_local_function_test() ->
   ?assertMatch(stubbed_local_fun, local_function()).
 
 
+foo_test() ->
+  ?assertMatch(foo, bar).
+
 -endif.
 
 
