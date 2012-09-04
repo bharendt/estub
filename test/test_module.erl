@@ -10,13 +10,15 @@
 assert_called_should_stub_local_function_test() ->
   ?assertMatch(local_function, local_function()),
   ?assert(is_function(fun local_function/0)),
-  ok = ?assertCalled(fun test_module:local_function/0 ?once ?andReturn(stubbed_local_fun)),
+  ?assertMatch(ok, ?assertCalled(fun test_module:local_function/0 ?once ?andReturn(stubbed_local_fun))),
   ?assertMatch(stubbed_local_fun, local_function()).
 
 
-foo_test() ->
-  ?assertMatch(foo, bar).
-
+assert_called_should_succeed_for_local_function_called_onces_test() ->
+  ?assert(is_function(fun local_function/0)),
+  ?assertCalled(fun test_module:local_function/0 ?once),
+  ?assertMatch(local_function, local_function()).
+  
 -endif.
 
 

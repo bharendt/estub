@@ -125,15 +125,9 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
       case fun_to_stub_record(Fun) of 
         _Error = {error, Error} -> Error;
         Stub = #stub{module_name = ModuleName} ->
-          WasCompiledWithMocking = case is_mocked(ModuleName) of
+          case is_mocked(ModuleName) of
             false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
-            true -> ok
-          end,
-          case WasCompiledWithMocking of
-            ok ->
-              set_stub(Stub#stub { returns = ReturnValue}),
-              ok;
-            Error -> Error
+            true  -> set_stub(Stub#stub { returns = ReturnValue}), ok              
           end
       end;
     {error, Reason} -> 
@@ -186,9 +180,9 @@ assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) whe
       undefined ->
         case get_expected_state(Options) of
           false -> % start faked gen_server process
-            gen_server:start({GlobalOrLocal, RegisteredName}, stub_mocked_gen_server, [RegisteredName], []);
+            gen_server:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_server, [RegisteredName], []);
           {inState, _StateName} -> % start faked gen_fsm process
-            gen_fsm:start({GlobalOrLocal, RegisteredName}, stub_mocked_gen_fsm, [RegisteredName], [])
+            gen_fsm:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_fsm, [RegisteredName], [])
         end;
       ExistingPid ->
         {ok, ExistingPid}                                                       
@@ -205,12 +199,9 @@ assert_called(GenSomethingPid, Times, Options, MODULE, LINE) when
                                                        is_list(Options) ->
   case get_mock_info(GenSomethingPid) of
     {GenServerModuleName, Behaviour, IsMocked} ->
-      WasCompiledWithMocking = case IsMocked of
+      case IsMocked of
         false -> .erlang:error({missing_parse_transform, [{module, GenServerModuleName}, {parse_transform, estub}]});
-        true -> ok
-      end,
-      case WasCompiledWithMocking of
-        ok ->
+        true  -> 
           case Behaviour of
             gen_server ->
               case create_assertion(Times, Options, FunName = handle_call, _Arity = 3) of
@@ -235,8 +226,7 @@ assert_called(GenSomethingPid, Times, Options, MODULE, LINE) when
               end;
             UnsupportedBehaviour ->
               {error, {unsupported_behaviour, UnsupportedBehaviour}}
-          end;
-        Error -> Error
+          end
       end;
     not_mockable ->
       {error, not_mockable}
@@ -247,18 +237,13 @@ assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock),
   case fun_to_stub_record(Mock) of 
     _Error = {error, Error} -> Error;
     Stub = #stub{module_name = ModuleName, fun_name = FunName, arity = Arity} ->
-      WasCompiledWithMocking = case is_mocked(ModuleName) of
+      case is_mocked(ModuleName) of
         false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
-        true -> ok
-      end,
-      case WasCompiledWithMocking of
-        ok ->
+        true -> 
           case create_assertion(Times, Options, FunName, Arity) of
-            Assertion = #assert_call{} ->
-              add_assert_call(Stub, Assertion, MODULE, LINE);
+            Assertion = #assert_call{} -> add_assert_call(Stub, Assertion, MODULE, LINE);
             Error -> Error
-          end;
-        Error -> Error
+          end          
       end
   end.
 
@@ -307,10 +292,43 @@ add_assert_call(Stub = #stub{}, Assertion, MODULE, LINE) ->
 add_assert_call(Stub = {gen_server, _GlobalOrLocal, _Pid, _CallOrCast}, Assertion, MODULE, LINE) ->
   cast_to_mock_server({add_assert_call, Stub, Assertion#assert_call{location = {MODULE, LINE}}}).
 
-
+%% @doc cleans all previous assertions. this is required, because if a test fails because of
+%%      an eunit assertion, estub:check_assertions/0 is never called and stubbing and mocking
+%%      assertions remain in the esub gen_server and will cause further tests to fail:
+%%
+%% WRONG:
+%%       my_failing_test() ->
+%%         ?assertCalled(fun foo:bar/3, ?once ?andReturn(ok)), 
+%%         ?assert(false), % fails and execution of test fun stops here
+%%         estub:check_assertions(). % is never called
+%%         
+%%       my_next_test_will_fail_too_test() ->
+%%         ?assert(true),
+%%         estub:check_assertions(). % will fails because it evalutates the ?assertCalled() macro from my_failing_test/0
+%%         
+%% CORRECT:  
+%%       
+%%       my_next_test_with_clean_estub_tests_test() ->
+%%         estub:clean_assertions(),
+%%         ?assert(true),
+%%         estub:check_assertions(). % no stubbing tests to execute
+%%  
+%% INFO: this is what the estub:parse_transform/2 function does automatically for all test-functions
+%%        
+-spec clean_assertions() -> ok.
 clean_assertions() ->
-  io:format("cleaning assertions...").
+  io:format("cleaning assertions..."),
+  case global:whereis_name(?MODULE) of
+    undefined -> ok; % assume that no assertions were made if server is not running
+    Pid -> gen_server:call(Pid, {get_assertions_and_reset, global}), ok
+  end.
 
+%% @doc checks whether all stubbing and mocking assertions that made for the current test 
+%%      are true and throws an error if not. it also removes all existing assertions from
+%%      the estub gen_server to start with clean assertion list if ?assertCalled() makros
+%%      are used the next time.
+%% @throws {assertCalled, term()} | {unknown_assertion, term()}
+-spec check_assertions() -> ok.
 check_assertions() ->
   io:format("checking assertions..."),
   case global:whereis_name(?MODULE) of
@@ -773,7 +791,7 @@ trasform_mock_content(Content, LineNumber, ModuleToMock, FunToMock, Arity) ->
       [{var,LineNumber,'__Mocked___Result__'}]}]}].
   
 %% @doc transforms the content of an eunit test fun xxx_test/0 and adds to the and a call
-%%      to eunit_mock:check_assertions() that verifies that the estub makros were successful.      
+%%      to estub:check_assertions() that verifies that the estub makros were successful.      
 %%      a test function like that:
 %%
 %%      foo_test() ->

@@ -40,7 +40,7 @@ handle_call('__$stop__', _From, State) ->
   {stop, normal, ok, State};
   
 handle_call(Event, From, State = #state {mocked_module_name = ModuleName}) ->
-  case eunit_mock:execute__mock__(?MODULE, handle_call, 3, [Event, From, State], self()) of
+  case estub:execute__mock__(?MODULE, handle_call, 3, [Event, From, State], self()) of
     no____mock ->
       error_logger:info_report([{message, 'received unhandled event in handle_call.'},
                                 {module, ModuleName}, {pid, self()}, {event, Event}]),
