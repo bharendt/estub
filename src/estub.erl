@@ -317,7 +317,6 @@ add_assert_call(Stub = {gen_server, _GlobalOrLocal, _Pid, _CallOrCast}, Assertio
 %%        
 -spec clean_assertions() -> ok.
 clean_assertions() ->
-  io:format("cleaning assertions..."),
   case global:whereis_name(?MODULE) of
     undefined -> ok; % assume that no assertions were made if server is not running
     Pid -> gen_server:call(Pid, {get_assertions_and_reset, global}), ok
@@ -330,7 +329,6 @@ clean_assertions() ->
 %% @throws {assertCalled, term()} | {unknown_assertion, term()}
 -spec check_assertions() -> ok.
 check_assertions() ->
-  io:format("checking assertions..."),
   case global:whereis_name(?MODULE) of
     undefined -> ok; % assume that no assertions were made if server is not running
     Pid -> 
