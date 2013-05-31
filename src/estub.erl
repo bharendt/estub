@@ -126,7 +126,7 @@ stub(Fun, ReturnValue) when is_function(Fun) ->
         _Error = {error, Error} -> Error;
         Stub = #stub{module_name = ModuleName} ->
           case is_mocked(ModuleName) of
-            false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
+            false -> erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
             true  -> set_stub(Stub#stub { returns = ReturnValue}), ok              
           end
       end;
@@ -200,7 +200,7 @@ assert_called(GenSomethingPid, Times, Options, MODULE, LINE) when
   case get_mock_info(GenSomethingPid) of
     {GenServerModuleName, Behaviour, IsMocked} ->
       case IsMocked of
-        false -> .erlang:error({missing_parse_transform, [{module, GenServerModuleName}, {parse_transform, estub}]});
+        false -> erlang:error({missing_parse_transform, [{module, GenServerModuleName}, {parse_transform, estub}]});
         true  -> 
           case Behaviour of
             gen_server ->
@@ -238,7 +238,7 @@ assert_called(Mock, Times, Options, MODULE, LINE) when is_function(Mock),
     _Error = {error, Error} -> Error;
     Stub = #stub{module_name = ModuleName, fun_name = FunName, arity = Arity} ->
       case is_mocked(ModuleName) of
-        false -> .erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
+        false -> erlang:error({missing_parse_transform, [{module, ModuleName}, {parse_transform, estub}]});
         true -> 
           case create_assertion(Times, Options, FunName, Arity) of
             Assertion = #assert_call{} -> add_assert_call(Stub, Assertion, MODULE, LINE);
@@ -587,7 +587,7 @@ return_mock_result(Fun, ModuleName, FunctionName = handle_call, Arity = 3, Argum
     ReturnValue -> auto_complete_return_value(ReturnValue, ModuleName, FunctionName, Arity, Arguments, Self)
   end;
 return_mock_result(Fun, ModuleName, FunctionName, Arity, _Arguments, _Self) when is_function(Fun) -> 
-  .erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
+  erlang:error({arity_mismatch, [{function, list_to_atom(atom_to_list(ModuleName) ++ ":" ++ 
                                              atom_to_list(FunctionName) ++ "/" ++ 
                                              integer_to_list(Arity))},
                                   {stub, Fun}]});
@@ -623,10 +623,10 @@ check_assertions(Stub, [#assert_call{ required_call_count = at_least_once, curre
 check_assertions(Stub, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required == Current ->
   check_assertions(Stub, Rest, ok);
 check_assertions(Stub = #stub {not_matching_args = NotMatchingArgs}, [#assert_call{ required_call_count = Required, current_call_count = Current} | Rest], _Acc) when Required /= Current ->
-  .erlang:error({assertCalled, [stub_error_info(Stub), {required, Required}, {current, Current}, {not_matching_args, lists:sublist(NotMatchingArgs,5)}]}),
+  erlang:error({assertCalled, [stub_error_info(Stub), {required, Required}, {current, Current}, {not_matching_args, lists:sublist(NotMatchingArgs,5)}]}),
   check_assertions(Stub, Rest, error);
 check_assertions(Stub, [UnknownAssertion | Rest], _Acc) ->
-  .erlang:error({unknown_assertion, [stub_error_info(Stub),{assertion, UnknownAssertion}]}),
+  erlang:error({unknown_assertion, [stub_error_info(Stub),{assertion, UnknownAssertion}]}),
   check_assertions(Stub, Rest, error).
  
 stub_error_info(#stub{module_name = ModuleName, fun_name = FunctionName, arity = Arity}) -> 

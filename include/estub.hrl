@@ -48,13 +48,13 @@
 	    case (estub:stub(Fun, ReturnValue)) of
 	  __Pid when is_atom(__FunAsModuleName), is_pid(__Pid) -> __Pid; % for stubbing gen_servers and gen_fsm    
 		ok -> ok;
-    % __V when is_atom(__FunAsModuleName) -> .erlang:error({stub_gen_process_failed,
+    % __V when is_atom(__FunAsModuleName) -> erlang:error({stub_gen_process_failed,
     %           [{module, ?MODULE},
     %            {line, ?LINE},
     %            {gen_process, (??Fun)},
     %            {return_value, (??ReturnValue)},
     %            {value, __V}]});
-		__V -> .erlang:error({stub_failed,
+		__V -> erlang:error({stub_failed,
 				      [{module, ?MODULE},
 				       {line, ?LINE},
 				       {function, (??Fun)},
@@ -74,7 +74,7 @@
 	  [__FUN__ | __OPTIONS__] = __ALL_OPTIONS__,
 	  case (estub:assert_called(__FUN__, __OPTIONS__, ?MODULE, ?LINE)) of
 		  ok -> ok;
-		  __V -> .erlang:error({assertCalled_failed,
+		  __V -> erlang:error({assertCalled_failed,
 				      [{module, ?MODULE},
 				       {line, ?LINE},
 				       {assertion, (??Options)},

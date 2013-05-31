@@ -4,10 +4,10 @@
  [{description, "Stubbing and Mocking Extension for EUnit"},
   {vsn, "0.3"},
   {modules, [
-    estub_mock.erl,
-    estub_mocked_gen_fsm.erl,
-    estub_mocked_gen_server.erl,
-    estub_util.erl
+    estub_mock,
+    estub_mocked_gen_fsm,
+    estub_mocked_gen_server,
+    estub_util
   ]},
   {registered,[]},
   {applications, [stdlib]},
