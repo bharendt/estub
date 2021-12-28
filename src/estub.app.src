@@ -10,5 +10,5 @@
     estub_util
   ]},
   {registered,[]},
-  {applications, [stdlib]},
+  {applications, [stdlib, kernel]},
   {env, []}]}.
