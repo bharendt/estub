@@ -182,7 +182,7 @@ assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) whe
           false -> % start faked gen_server process
             gen_server:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_server, [RegisteredName], []);
           {inState, _StateName} -> % start faked gen_fsm process
-            gen_fsm:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_fsm, [RegisteredName], [])
+            gen_statem:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_fsm, [RegisteredName], [])
         end;
       ExistingPid ->
         {ok, ExistingPid}                                                       
