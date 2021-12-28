@@ -837,6 +837,8 @@ farity_list([]) -> [].
 %%  N.B. Field names are full expressions here but only atoms are allowed
 %%  by the *parser*!
 
+record_defs([{typed_record_field, RecordField, _RecordFieldType}|Is]) ->
+    record_defs([RecordField|Is]);
 record_defs([{record_field,Line,{atom,La,A},Val0}|Is]) ->
     Val1 = expr(Val0),
     [{record_field,Line,{atom,La,A},Val1}|record_defs(Is)];
