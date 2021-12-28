@@ -2,7 +2,7 @@
 
 {application, estub,
  [{description, "Stubbing and Mocking Extension for EUnit"},
-  {vsn, "0.3"},
+  {vsn, "0.4"},
   {modules, [
     estub_mock,
     estub_mocked_gen_fsm,
