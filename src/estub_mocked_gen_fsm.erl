@@ -17,7 +17,7 @@
 %% %CopyrightEnd%
 %%
 -module(estub_mocked_gen_fsm).
--behaviour(gen_fsm).
+-behaviour(gen_statem).
 -mocked(true).
 
 %%%-----------------------------------------------------------------
@@ -117,7 +117,7 @@
 
 -export([behaviour_info/1]).
 -export([code_change/4, handle_event/3, handle_info/3, handle_sync_event/4, 
-         init/1, stop/0, stop/1, terminate/3]).
+         init/1, callback_mode/0, stop/0, stop/1, terminate/3]).
 
 %% Internal exports
 -export([init_it/6, print_event/3,
@@ -138,7 +138,7 @@ stop() ->
   stop(?MODULE).
 
 stop(Process) ->
-  gen_fsm:sync_send_all_state_event(Process, '__$stop__').
+  gen_statem:call(Process, '__$stop__').
 
 
 %%% ---------------------------------------------------
@@ -147,7 +147,10 @@ stop(Process) ->
 init([ModuleName]) -> 
   {ok, idle, #state{ module_name = ModuleName}}.
 
-handle_event(_Event, StateName, StateData) ->
+callback_mode() ->
+  state_functions.  
+  
+  handle_event(_Event, StateName, StateData) ->
   {next_state, StateName, StateData}.
 
 handle_sync_event('__$stop__', _From, _StateName, StateData) ->
@@ -645,7 +648,7 @@ format_status(Opt, StatusData) ->
     [PDict, SysState, Parent, Debug, [Name, StateName, StateData, Mod, _Time]] =
 	StatusData,
     Header = lists:concat(["Status for state machine ", Name]),
-    Log = sys:get_debug(log, Debug, []),
+    Log = sys:get_log(Debug),
     Specfic = 
 	case erlang:function_exported(Mod, format_status, 2) of
 	    true ->

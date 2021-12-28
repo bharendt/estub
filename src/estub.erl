@@ -182,7 +182,7 @@ assert_called({GlobalOrLocal, RegisteredName}, Times, Options, MODULE, LINE) whe
           false -> % start faked gen_server process
             gen_server:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_server, [RegisteredName], []);
           {inState, _StateName} -> % start faked gen_fsm process
-            gen_fsm:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_fsm, [RegisteredName], [])
+            gen_statem:start({GlobalOrLocal, RegisteredName}, estub_mocked_gen_fsm, [RegisteredName], [])
         end;
       ExistingPid ->
         {ok, ExistingPid}                                                       
@@ -837,6 +837,8 @@ farity_list([]) -> [].
 %%  N.B. Field names are full expressions here but only atoms are allowed
 %%  by the *parser*!
 
+record_defs([{typed_record_field, RecordField, _RecordFieldType}|Is]) ->
+    record_defs([RecordField|Is]);
 record_defs([{record_field,Line,{atom,La,A},Val0}|Is]) ->
     Val1 = expr(Val0),
     [{record_field,Line,{atom,La,A},Val1}|record_defs(Is)];
