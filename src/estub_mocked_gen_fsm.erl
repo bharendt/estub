@@ -648,7 +648,7 @@ format_status(Opt, StatusData) ->
     [PDict, SysState, Parent, Debug, [Name, StateName, StateData, Mod, _Time]] =
 	StatusData,
     Header = lists:concat(["Status for state machine ", Name]),
-    Log = sys:get_debug(log, Debug, []),
+    Log = sys:get_log(Debug),
     Specfic = 
 	case erlang:function_exported(Mod, format_status, 2) of
 	    true ->
